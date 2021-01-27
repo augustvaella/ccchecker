@@ -28,7 +28,7 @@ def remove_emptyline(text):
     return ret
 
 
-
+#あくまでも暫定
 class ProgressBar:
     PROGRESS_MAX = 1000000
     PROGRESS_LOG_LOAD_MAX = 500000
@@ -65,6 +65,57 @@ class ProgressBar:
         self.window[self.key].update(self.progress_count, self.progress_max)
         #print(str(self.progress_count) + '/' + str(self.progress_step))
 
+#暫定
+class FileListWidget():
+    def __init__(self, name, tab_text=''):
+        self.name = name
+        self.tab_text = tab_text
+
+    def create(self):
+        lyt = sg.Tab(
+            self.tab_text,
+            [
+                [sg.Multiline(
+                    key=self.name + ' list',
+                    enable_events=True,
+                    auto_refresh=True
+                    )
+                ],
+                [sg.Column([[sg.Button('クリア', key=self.name + ' clear')]]),
+                sg.Column([[sg.Button('追加', key=self.name + ' add', enable_events=True)]]),
+                sg.Column([[sg.Button('追加(リストファイル)', key=self.name + ' addlistfile', enable_events=True)]]),
+                sg.Column([[sg.Button('リストをファイルに書き出す', key=self.name + ' output', enable_events=True)]])
+                ]
+            ]
+        )
+
+        return lyt
+    
+    def clear_list(self):
+        pass
+
+    def add_to_list(self, values):
+        pass
+
+    def add_list_to_list(self, values):
+        pass
+
+    def initialize_list(self):
+        pass
+
+    def expand_list_widget(self):
+        pass
+
+    def output_list(self, values):
+        pass
+
+    def get_listfile_to_initialize(self):
+        pass
+
+    def receive_message(self, part_name, values):
+        pass
+
+        
 
 
 class Messenger():
@@ -72,7 +123,7 @@ class Messenger():
 
     def __init__(self):
         pass
-    
+
     #message_raw: window.read()
     def get_message(self, message_raw):
         key, values = message_raw
@@ -814,10 +865,14 @@ layout_tab_zip = sg.Tab('ftbucketZipファイルリスト',[
     [layout_column_zip_clear, layout_column_zip_file_add, layout_column_zip_file_add_list, layout_column_zip_file_output_list]
 ])
 
+
+urlListWidget = FileListWidget('urlList', tab_text='URLリスト')
+
+
 layout_tab_setting = sg.Tab('設定', [])
 
 layout = [
-    [sg.TabGroup([[layout_tab_condition, layout_tab_file, layout_tab_zip, layout_tab_setting]], enable_events=True, key='-TABGROUP-')],
+    [sg.TabGroup([[layout_tab_condition, layout_tab_file, layout_tab_zip, urlListWidget.create(), layout_tab_setting]], enable_events=True, key='-TABGROUP-')],
     [sg.Text('保存用CSVファイル名'), sg.Input('', enable_events=True, key='-CSVFILENAME-'), sg.FileSaveAs('参照', key='-CSVFILENAME-', file_types=file_types_write)],
     [sg.Button('書き出し', key='-OK-'), sg.Button('終了', key='-EXIT-')],
     [sg.ProgressBar(0, size=PROGRESS_BAR_SIZE, orientation='horizontal', key='-PROGRESSBAR-')]
@@ -1326,6 +1381,7 @@ def get_name_from_key(key):
     return key[key.rfind('_') + 1 : len(key) - 1].lower()
 
 messenger = Messenger()
+messenger.register_destination('urlList', urlListWidget.receive_message)
 
 window = sg.Window('Chiki Chiki Checker', layout, enable_close_attempted_event=True)
 window.finalize()
