@@ -110,7 +110,7 @@ class ProgressBar:
 class FileListWidget(Widget):
     def __init__(self, name,
      tab_text='',
-     file_types=(('全てのファイル', '*.*')),
+     file_types=(('全てのファイル', '*.*'),),
      is_local_file=True,
      file_types_list=(('テキストファイル', '*.txt'), ('全てのファイル', '*.*'))
      ):
@@ -288,16 +288,25 @@ class Messenger():
     address_book = {}
 
     def __init__(self):
-        self.key = ''
-        self.values = {} #とりあえずget_message()でゲットしたやつは持っとく
+        self.__key = ''
+        self.__values = {} #とりあえずget_message()でゲットしたやつは持っとく
         pass
+
+    #メッセージ(self.key and self.key) は隠しとく(外から書き換え不可)
+    @property
+    def key(self):
+        return self.__key
+    
+    @property
+    def values(self):
+        return self.__values
 
     #message_raw: window.read()
     #メッセージを受けとるよ！
     def get_message(self, window, message_raw):
         key, values = message_raw
-        self.key = key
-        self.values = values
+        self.__key = key
+        self.__values = values
 
     def dispatch_message(self, window):
         #持ってるメッセージを配りなさい
@@ -353,11 +362,6 @@ class SearchInputString(Widget):
 
 CONFIG_INI_PATH = 'config.ini'
 is_config_ini_initialized = False
-
-DEFAULT_FILELIST_PATH = 'filelist'
-default_filelist = ''
-DEFAULT_ZIPLIST_PATH = 'ziplist'
-default_ziplist = ''
 
 config = configparser.ConfigParser()
 if os.path.isfile(CONFIG_INI_PATH) == False:
@@ -426,19 +430,6 @@ if is_config_ini_initialized == True:
     with open(CONFIG_INI_PATH, 'w', encoding='utf-8') as f:
         config.write(f)
 
-if os.path.isfile(DEFAULT_FILELIST_PATH) == False:
-    with open(DEFAULT_FILELIST_PATH, 'w', encoding='utf-8') as f:
-        f.write('\n')    
-else:
-    with open(DEFAULT_FILELIST_PATH, 'r', encoding='utf-8') as f:
-        default_filelist = f.read()
-
-if os.path.isfile(DEFAULT_ZIPLIST_PATH) == False:
-    with open(DEFAULT_ZIPLIST_PATH, 'w', encoding='utf-8') as f:
-        f.write('\n')    
-else:
-    with open(DEFAULT_ZIPLIST_PATH, 'r', encoding='utf-8') as f:
-        default_ziplist = f.read()
 
 
 #RESPONSE_CONDITION[6].append(pat)
@@ -982,63 +973,18 @@ layout_tab_condition = sg.Tab('検索条件',[
     [layout_condition_text, layout_condition_input]
     ])
 
-layout_column_file_remove = sg.Column([
-    [sg.Button('削除', key='-REMOVE_FILELIST-')]
-    ])
-
-layout_column_file_clear = sg.Column([
-    [sg.Button('クリア', key='-CLEAR_FILELIST-')]
-    ])
-
-layout_column_file_add = sg.Column([
-    [sg.Button('ファイル追加', key="-FILEPATH-", enable_events=True)]
-    ])
-
-layout_column_file_add_list = sg.Column([
-    [sg.Button('ファイル追加(リストファイルから)', key='-FILELISTPATH-', enable_events=True)]
-    ])
-
-layout_column_file_output_list = sg.Column([
-    [sg.Button('リストをファイルに書き出す', key='-OUTPUT_FILELIST-', enable_events=True)]
-    ])
-
-layout_tab_file = sg.Tab('ローカルファイルリスト',[
-    [sg.Multiline('', key='-FILELIST-', enable_events=True, auto_refresh=True)],
     #↓-FILEPATH-ではなく-FILELISTPATH-イベントが発生する。FileBrowse系は必ず同列ではなく別々に
     #[sg.FilesBrowse('参照', key="-FILEPATH-", change_submits=True), sg.FileBrowse('リストファイル読み込み', key='-FILELISTPATH-', change_submits=True)]
-    [layout_column_file_clear, layout_column_file_add, layout_column_file_add_list, layout_column_file_output_list]
-    ])
 
-
-layout_column_zip_clear = sg.Column([
-    [sg.Button('クリア', key='-CLEAR_ZIPLIST-')]
-    ])
-
-layout_column_zip_file_add = sg.Column([
-    [sg.Button('ファイル追加', key="-ZIPPATH-", enable_events=True)]
-    ])
-
-layout_column_zip_file_add_list = sg.Column([
-    [sg.Button('ファイル追加(リストファイルから)', key='-ZIPLISTPATH-', enable_events=True)]
-    ])
-
-layout_column_zip_file_output_list = sg.Column([
-    [sg.Button('リストをファイルに書き出す', key='-OUTPUT_ZIPLIST-', enable_events=True)]
-    ])
-
-layout_tab_zip = sg.Tab('ftbucketZipファイルリスト',[
-    [sg.Multiline(key='-ZIPLIST-', enable_events=True, auto_refresh=True)],
-    [layout_column_zip_clear, layout_column_zip_file_add, layout_column_zip_file_add_list, layout_column_zip_file_output_list]
-])
-
-
-urlListWidget = FileListWidget('urlList', tab_text='URLリスト', is_local_file=False)
+fileListWidget = FileListWidget('fileList', tab_text='ファイル', file_types=file_types_log)
+zipListWidget = FileListWidget('zipList', tab_text='ftbucketDLログZip', file_types=file_types_ziplog)
+urlListWidget = FileListWidget('urlList', tab_text='URL', is_local_file=False)
 
 
 layout_tab_setting = sg.Tab('設定', [])
 
 layout = [
-    [sg.TabGroup([[layout_tab_condition, layout_tab_file, layout_tab_zip, urlListWidget.create(), layout_tab_setting]], enable_events=True, key='-TABGROUP-')],
+    [sg.TabGroup([[layout_tab_condition, urlListWidget.create(), fileListWidget.create(), zipListWidget.create(), layout_tab_setting]], enable_events=True, key='-TABGROUP-')],
     [sg.Text('保存用CSVファイル名'), sg.Input('', enable_events=True, key='-CSVFILENAME-'), sg.FileSaveAs('参照', key='-CSVFILENAME-', file_types=file_types_write)],
     [sg.Button('書き出し', key='-OK-'), sg.Button('終了', key='-EXIT-')],
     [sg.ProgressBar(0, size=PROGRESS_BAR_SIZE, orientation='horizontal', key='-PROGRESSBAR-')]
@@ -1240,14 +1186,6 @@ def event_initial():
     load_config_search_input_date('date')
     load_config_search_input_time('time')
 
-    if default_filelist:
-        window['-FILELIST-'].update(default_filelist)
-    if default_ziplist:
-        window['-ZIPLIST-'].update(default_ziplist)
-
-    window['-FILELIST-'].expand(True, True)
-    window['-ZIPLIST-'].expand(True, True)
-
 
     window['-CSVFILENAME-'].update(config.get('output', 'csvfilename'))
 
@@ -1280,12 +1218,6 @@ def event_exit():
     with open(CONFIG_INI_PATH, 'w', encoding='utf-8') as f:
         config.write(f)
 
-    with open(DEFAULT_FILELIST_PATH, 'w', encoding='utf-8') as f:
-        f.write(values['-FILELIST-'])
-
-    with open(DEFAULT_ZIPLIST_PATH, 'w', encoding='utf-8') as f:
-        f.write(values['-ZIPLIST-'])
-
     return
 
 
@@ -1295,59 +1227,6 @@ def always_event():
 
 
 
-def event_remove_filelist():
-    return
-
-
-
-def event_clear_filelist():
-    if sg.popup_yes_no('リストをクリアしますか？') == 'Yes':
-        window['-FILELIST-'].update('')
-    return
-
-
-
-def event_file_path():
-    ret = sg.popup_get_file('追加ファイルの選択:', multiple_files=True, modal=True, file_types=file_types_log)
-    if not ret:
-        return
-    lst = ret.split(sg.BROWSE_FILES_DELIMITER)
-    if values['-FILELIST-'] == '\n' or values['-FILELIST-'] == '':
-        window['-FILELIST-'].update(re.sub(r'^\n', '', '\n'.join(lst)))
-    else:
-        window['-FILELIST-'].update(values['-FILELIST-'] + '\n'.join(lst))
-    return
-
-
-
-def event_filelist_path():
-    ret = sg.popup_get_file('リストファイルの選択:', multiple_files=False, modal=True, file_types=file_types_list)
-    if not ret:
-        return
-    if os.path.isfile(ret) == False:
-        return
-
-    with open(ret, 'r', encoding='utf-8') as f:
-        lst = f.read()
-
-    if values['-FILELIST-'] == '\n' or values['-FILELIST-'] == '':
-        window['-FILELIST-'].update(re.sub(r'^\n', '', lst))
-    else:
-        window['-FILELIST-'].update(values['-FILELIST-'] + lst)
-    return
-
-
-
-def event_output_filelist():
-    ret = sg.popup_get_file('書き出すリストファイルの選択:', save_as=True, multiple_files=False, modal=True, file_types=file_types_list)
-    if not ret:
-        return
-
-    with open(ret, 'w', encoding='utf-8') as f:
-        f.write(values['-FILELIST-'])
-    sg.Popup('ファイルを書き出しました')
-    return
-
 
 
 def event_csvfile_path():
@@ -1355,64 +1234,10 @@ def event_csvfile_path():
     return
 
 
-
-def event_clear_ziplist():
-    if sg.popup_yes_no('リストをクリアしますか？') == 'Yes':
-        window['-ZIPLIST-'].update('')
-    return
-
-
-
-def event_zip_path():
-    ret = sg.popup_get_file('追加ファイルの選択:', multiple_files=True, modal=True, file_types=file_types_ziplog)
-    if not ret:
-        return
-
-    lst = ret.split(sg.BROWSE_FILES_DELIMITER)
-    if values['-ZIPLIST-'] == '\n' or values['-ZIPLIST-'] == '':
-        window['-ZIPLIST-'].update(re.sub(r'^\n', '', '\n'.join(lst)))
-    else:
-        window['-ZIPLIST-'].update(values['-ZIPLIST-'] + '\n'.join(lst))
-    return
-
-
-
-def event_ziplist_path():
-    ret = sg.popup_get_file('リストファイルの選択:', multiple_files=False, modal=True, file_types=file_types_list)
-    if not ret:
-        return
-    if os.path.isfile(ret) == False:
-        return
-
-    if ret:
-        with open(ret, 'r', encoding='utf-8') as f:
-            lst = f.read()
-
-    if values['-ZIPLIST-'] == '\n' or values['-ZIPLIST-'] == '':
-        window['-ZIPLIST-'].update(re.sub(r'^\n', '', lst))
-    else:
-        window['-ZIPLIST-'].update(values['-ZIPLIST-'] + lst)
-    return
-
-
-
-def event_output_ziplist():
-    ret = sg.popup_get_file('書き出すリストファイルの選択:', save_as=True, multiple_files=False, modal=True, file_types=file_types_list)
-    if not ret:
-        return
-
-    with open(ret, 'w', encoding='utf-8') as f:
-        f.write(values['-ZIPLIST-'])
-    sg.Popup('ファイルを書き出しました')
-    return
-
-
-
 def event_ok():
     # ファイルリスト等取得
-
-    filelist_string = remove_emptyline(values['-FILELIST-'])
-    ziplist_string = remove_emptyline(values['-ZIPLIST-'])
+    filelist_string = remove_emptyline(messenger.values['fileList list'])# キーの取得はきちんと書き換え必要！
+    ziplist_string = remove_emptyline(messenger.values['zipList list'])
     #print('======' + filelist_string + '\n----\n' + ziplist_string + '\n=========\n')
     filelist_raw = filelist_string.split('\n')
     ziplist_raw = ziplist_string.split('\n')
@@ -1531,17 +1356,8 @@ def event_ok():
 
 
 handler = {
-    '-REMOVE_FILELIST-': event_remove_filelist,
-    '-CLEAR_FILELIST-': event_clear_filelist,
-    '-FILEPATH-': event_file_path,
-    '-FILELISTPATH-': event_filelist_path,
-    '-OUTPUT_FILELIST-': event_output_filelist,
     '-OK-': event_ok,
-    '-CSVFILEPATH-': event_csvfile_path,
-    '-CLEAR_ZIPLIST-': event_clear_ziplist,
-    '-ZIPPATH-': event_zip_path,
-    '-ZIPLISTPATH-': event_ziplist_path,
-    '-OUTPUT_ZIPLIST-': event_output_ziplist,
+    '-CSVFILEPATH-': event_csvfile_path
 }
 
 def get_name_from_key(key):
@@ -1550,6 +1366,8 @@ def get_name_from_key(key):
 #testWidget = TestWidget('testwidget')
 
 messenger = Messenger()
+messenger.register_destination('fileList', fileListWidget.receive_message)
+messenger.register_destination('zipList', zipListWidget.receive_message)
 messenger.register_destination('urlList', urlListWidget.receive_message)
 
 window = sg.Window('Chiki Chiki Checker', layout, enable_close_attempted_event=True)
@@ -1588,9 +1406,3 @@ while True:
 
 window.close()
 
-"""
-#thread = extract_ftbucket_zip(zip_filename)
-thread = fetch_html_file(filename)
-set_list_to_write(to_write, thread, r'')
-write_csv(result_filename, to_write)
-"""
