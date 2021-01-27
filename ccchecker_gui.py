@@ -10,9 +10,11 @@ STR_TO_BOOL = {
     'False': False, 'True': True
 }
 
-# Widget Naming Rule
-# (Widget Name) (Part Name)
-# separated by space
+# Widget 暫定ルール
+# key を '(Widget Name) (Part Name)'として、空白で区切る
+# 将来的にはkeyを動的に変更してメッセージをやりとりできるかも？
+#
+
 GUI_MESSAGE_SPLIT_CHARACTER = ' '
 
 PROGRESS_BAR_SIZE = (50, 20)
@@ -34,7 +36,7 @@ class ProgressBar:
     ##PROGRESS_FINAL_STEP = PROGRESS_MAX - (PROGRESS_LOG_LOAD_MAX + PROGRESS_FILTER_LOG_MAX)
     progress_count = 0
     progress_step = 0
-    progress_max
+    progress_max = 0
 
     window = None
     key = ''
@@ -66,16 +68,32 @@ class ProgressBar:
 
 
 class Messenger():
-    def __init__(self):
-        self.address_book = {}
-    
-    #message: window.read()
-    def get_message(self, message_raw):
-        message = message_raw.split(GUI_MESSAGE_SPLIT_CHARACTER)
-        self.send_message(message[0], message[1])
+    address_book = {}
 
-    def send_message(self, name, message):
-        address_book[name]receiver(message)
+    def __init__(self):
+        pass
+    
+    #message_raw: window.read()
+    def get_message(self, message_raw):
+        key, values = message_raw
+        name, part_name = self.get_name(key) #part_name はname(メッセージ宛名のWidget名)の残余部分
+        self.send_message(name, part_name, values)
+
+    def get_name(self, key):
+        #暫定措置
+        #とりあえず空白で区切っとく
+        names = key.split(GUI_MESSAGE_SPLIT_CHARACTER)
+
+        # リファクタリングのための緊急措置
+        if len(names) >= 2:
+            return names[0], names[1]
+        else:
+            return names[0], ''
+
+
+    def send_message(self, name, part_name, values):
+        if name in self.address_book:
+            self.address_book[name](part_name, values)
         pass
 
     def register_destination(self, name, receiver):
@@ -98,7 +116,10 @@ class Widget():
     def create(self):
         lyt = []
         return lyt
-    def receive_message(self, part):
+    
+    #the message come from Messenger
+    #part_nameでいろいろできるかも？
+    def receive_message(self, part_name, values):
         pass
 
 
@@ -1304,6 +1325,7 @@ handler = {
 def get_name_from_key(key):
     return key[key.rfind('_') + 1 : len(key) - 1].lower()
 
+messenger = Messenger()
 
 window = sg.Window('Chiki Chiki Checker', layout, enable_close_attempted_event=True)
 window.finalize()
@@ -1313,7 +1335,8 @@ progress_bar = ProgressBar(window, '-PROGRESSBAR-')
 event_initial()
 
 while True:
-    key, values = window.read()
+    message_raw = window.read()
+    key, values = message_raw
 
     if key == sg.WIN_CLOSED or key == '-EXIT-' or key == sg.WINDOW_CLOSE_ATTEMPTED_EVENT:
         if sg.PopupYesNo('終了しますか？', modal=True) == 'Yes':
@@ -1322,11 +1345,15 @@ while True:
     
     always_event()
 
+    messenger.get_message(message_raw)
+
     if key in handler:
         handler[key]()
 
     if key in handlers:
         handlers[key](get_name_from_key(key))
+
+    
         
 
 window.close()
