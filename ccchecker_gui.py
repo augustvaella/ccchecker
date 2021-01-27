@@ -13,7 +13,7 @@ STR_TO_BOOL = {
 # Widget 暫定ルール
 # key を '(Widget Name) (Part Name)'として、空白で区切る
 # 将来的にはkeyを動的に変更してメッセージをやりとりできるかも？
-#
+# →できない、keyを変更すると外部から操作できない(window[key].update()など)
 
 GUI_MESSAGE_SPLIT_CHARACTER = ' '
 
@@ -26,6 +26,42 @@ def remove_emptyline(text):
     filelist_string = re.sub(r'^\s+', r'', text)
     filelist_string = re.sub(r'\n[\n\s]*', r'\n', text)
     return ret
+
+def generate_key(name, part_name):
+    return name + GUI_MESSAGE_SPLIT_CHARACTER + part_name
+
+
+class Widget():
+    def __init__(self, name):
+        self.name = name
+        self.handler = {}
+        pass
+    def activate(self):
+        pass
+    def deactivate(self):
+        pass
+    def load_config(self):
+        pass
+    def save_config(self):
+        pass
+    def create(self):
+        lyt = []
+        return lyt
+
+    def key(self, part_name, name=None):
+        if name is None:
+            name = self.name
+        #print(str(type(name)) + '/' + str(name) + '//' + str(type(part_name)) + '/' + str(part_name))
+        return name + GUI_MESSAGE_SPLIT_CHARACTER + part_name
+
+    
+    #the message come from Messenger
+    #part_nameでいろいろできるかも？
+    def receive_message(self, part_name, values, window):
+        self.handler[part_name](part_name, values, window)
+        #print('received message:'+ part_name + ' / ' + str(values) + ' / ' + str(window))
+
+
 
 
 #あくまでも暫定
@@ -65,12 +101,32 @@ class ProgressBar:
         self.window[self.key].update(self.progress_count, self.progress_max)
         #print(str(self.progress_count) + '/' + str(self.progress_step))
 
-#暫定
-class FileListWidget():
-    def __init__(self, name, tab_text=''):
-        self.name = name
-        self.tab_text = tab_text
 
+
+
+
+
+
+class FileListWidget(Widget):
+    def __init__(self, name,
+     tab_text='',
+     file_types=(('全てのファイル', '*.*')),
+     is_local_file=True,
+     file_types_list=(('テキストファイル', '*.txt'), ('全てのファイル', '*.*'))
+     ):
+        super().__init__(name)
+        self.tab_text = tab_text
+        self.handler = {
+            'clear': self.clear_list,
+            'add': self.add_to_list,
+            'addlistfile': self.add_list_to_list,
+            'output': self.output_list,
+            'list': self.touch_list
+        }
+        self.file_types = file_types
+        self.is_local_file = is_local_file
+        self.file_types_list = file_types_list
+    
     def create(self):
         lyt = sg.Tab(
             self.tab_text,
@@ -90,30 +146,110 @@ class FileListWidget():
         )
 
         return lyt
+
+    def touch_list(self, part_name, values, window):
+        pass
     
-    def clear_list(self):
+    def clear_list(self, part_name, values, window):
+        if sg.popup_yes_no('リストをクリアしますか？') == 'Yes':
+            window[generate_key(self.name, 'list')].update('')
         pass
 
-    def add_to_list(self, values):
-        pass
+    #self.is_local_file == Trueならローカルファイル、さもなくばURL
+    #暫定措置、ほかのモードが欲しければ拡張
+    def add_to_list(self, part_name, values, window):
+        key = self.key('list')
 
-    def add_list_to_list(self, values):
-        pass
+        if self.is_local_file == True:
+            ret = sg.popup_get_file('追加するファイルの選択:', multiple_files=True, modal=True, file_types=self.file_types)
+
+            if not ret:
+                return
+            
+            lst = ret.split(sg.BROWSE_FILES_DELIMITER)
+            if values[key] == '\n' or values[key] == '':
+                window[key].update(re.sub(r'^\n', '', '\n'.join(lst)))
+            else:
+                window[key].update(values[key] + '\n'.join(lst))
+
+        else:
+            ret = sg.popup_get_text('追加するURLの入力:', modal=True)
+
+            if not ret:
+                return
+            
+            if values[key] == '\n' or values[key] == '':
+                window[key].update(re.sub(r'^\n', '', ret))
+            else:
+                window[key].update(values[key] + ret)
+
+
+
+    def add_list_to_list(self, part_name, values, window):
+        key = self.key('list')
+        ret = sg.popup_get_file('リストファイルの選択:', multiple_files=False, modal=True, file_types=self.file_types_list)
+        if not ret:
+            return
+        if os.path.isfile(ret) == False:
+            return
+        
+        #エンコード問題はなんとかしないと
+        try:
+            with open(ret, 'r', encoding='utf-8') as f:
+                lst = f.read()
+        except UnicodeDecodeError as e:
+            sg.popup_error('ファイルを開けません。選択したファイルがUTF-8でエンコードされているか確認してください。', e)
+        else:
+            if values[key] == '\n' or values[key] == '':
+                window[key].update(re.sub(r'^\n', '', lst))
+            else:
+                window[key].update(values[key] + lst)
+        
 
     def initialize_list(self):
         pass
 
-    def expand_list_widget(self):
-        pass
+    def expand_list_widget(self, part_name, values, window):
+        key = self.key('list')
+        window[key].expand(True, True)
 
-    def output_list(self, values):
-        pass
+
+
+    def output_list(self, part_name, values, window):
+        key = self.key('list')
+        ret = sg.popup_get_file('書き出すリストファイルの選択:', save_as=True, multiple_files=False, modal=True, file_types=self.file_types_list)
+        if not ret:
+            return
+        
+        try:
+            with open(ret, 'w', encoding='utf-8') as f:
+                f.write(values[key])
+        except PermissionError as e:
+            sg.popup_error('ファイルを書き込めません。パーミッションエラーです:', e)
+        else:
+            sg.popup('ファイルを書き出しました')
+
+
 
     def get_listfile_to_initialize(self):
         pass
-
-    def receive_message(self, part_name, values):
+"""
+    def receive_message(self, part_name, values, window):
+        self.handler[part_name](part_name, values, window)
+        #print('received message:'+ part_name + ' / ' + str(values) + ' / ' + str(window))
         pass
+    """
+
+class TestWidget(Widget):
+    def __init__(self, name):
+        super().__init__(name)
+        self.handler = {
+            'test': self.testMethod
+        }
+    
+    def testMethod(self):
+        pass
+
 
         
 
@@ -125,10 +261,10 @@ class Messenger():
         pass
 
     #message_raw: window.read()
-    def get_message(self, message_raw):
+    def get_message(self, message_raw, window):
         key, values = message_raw
         name, part_name = self.get_name(key) #part_name はname(メッセージ宛名のWidget名)の残余部分
-        self.send_message(name, part_name, values)
+        self.send_message(name, part_name, values, window)
 
     def get_name(self, key):
         #暫定措置
@@ -142,36 +278,15 @@ class Messenger():
             return names[0], ''
 
 
-    def send_message(self, name, part_name, values):
+    def send_message(self, name, part_name, values, window):
         if name in self.address_book:
-            self.address_book[name](part_name, values)
+            self.address_book[name](part_name, values, window)
         pass
 
     def register_destination(self, name, receiver):
         self.address_book[name] = receiver
 
 
-class Widget():
-    def __init__(self, name):
-        self.name = name
-        self.widget = {}
-        pass
-    def activate(self):
-        pass
-    def deactivate(self):
-        pass
-    def load_config(self):
-        pass
-    def save_config(self):
-        pass
-    def create(self):
-        lyt = []
-        return lyt
-    
-    #the message come from Messenger
-    #part_nameでいろいろできるかも？
-    def receive_message(self, part_name, values):
-        pass
 
 
 class SearchInputString(Widget):
@@ -866,7 +981,7 @@ layout_tab_zip = sg.Tab('ftbucketZipファイルリスト',[
 ])
 
 
-urlListWidget = FileListWidget('urlList', tab_text='URLリスト')
+urlListWidget = FileListWidget('urlList', tab_text='URLリスト', is_local_file=False)
 
 
 layout_tab_setting = sg.Tab('設定', [])
@@ -1380,6 +1495,8 @@ handler = {
 def get_name_from_key(key):
     return key[key.rfind('_') + 1 : len(key) - 1].lower()
 
+#testWidget = TestWidget('testwidget')
+
 messenger = Messenger()
 messenger.register_destination('urlList', urlListWidget.receive_message)
 
@@ -1401,7 +1518,7 @@ while True:
     
     always_event()
 
-    messenger.get_message(message_raw)
+    messenger.get_message(message_raw, window)
 
     if key in handler:
         handler[key]()
