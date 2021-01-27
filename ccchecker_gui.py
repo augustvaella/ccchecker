@@ -10,6 +10,11 @@ STR_TO_BOOL = {
     'False': False, 'True': True
 }
 
+# Widget Naming Rule
+# (Widget Name) (Part Name)
+# separated by space
+GUI_MESSAGE_SPLIT_CHARACTER = ' '
+
 PROGRESS_BAR_SIZE = (50, 20)
 
 
@@ -57,6 +62,54 @@ class ProgressBar:
             self.change_step_value_progress_bar(length_data, progress_part_max)
         self.window[self.key].update(self.progress_count, self.progress_max)
         #print(str(self.progress_count) + '/' + str(self.progress_step))
+
+
+
+class Messenger():
+    def __init__(self):
+        self.address_book = {}
+    
+    #message: window.read()
+    def get_message(self, message_raw):
+        message = message_raw.split(GUI_MESSAGE_SPLIT_CHARACTER)
+        self.send_message(message[0], message[1])
+
+    def send_message(self, name, message):
+        address_book[name]receiver(message)
+        pass
+
+    def register_destination(self, name, receiver):
+        self.address_book[name] = receiver
+
+
+class Widget():
+    def __init__(self, name):
+        self.name = name
+        self.widget = {}
+        pass
+    def activate(self):
+        pass
+    def deactivate(self):
+        pass
+    def load_config(self):
+        pass
+    def save_config(self):
+        pass
+    def create(self):
+        lyt = []
+        return lyt
+    def receive_message(self, part):
+        pass
+
+
+class SearchInputString(Widget):
+    def __init__(self, name):
+        super().__init__(name)
+    
+
+
+
+
 
 
 
