@@ -121,7 +121,8 @@ class FileListWidget(Widget):
             'add': self.add_to_list,
             'addlistfile': self.add_list_to_list,
             'output': self.output_list,
-            'list': self.touch_list
+            'list': self.touch_list,
+            'window_finalized': self.on_window_finalized
         }
         self.file_types = file_types
         self.is_local_file = is_local_file
@@ -233,6 +234,10 @@ class FileListWidget(Widget):
 
     def get_listfile_to_initialize(self):
         pass
+
+    def on_window_finalized(self, part_name, values, window):
+        self.expand_list_widget(part_name, values, window)
+
 """
     def receive_message(self, part_name, values, window):
         self.handler[part_name](part_name, values, window)
@@ -285,6 +290,13 @@ class Messenger():
 
     def register_destination(self, name, receiver):
         self.address_book[name] = receiver
+    
+    #window.finalize() が出たときに全登録ガジェットに配られる特別なメッセージ
+    def send_window_finalized_message(self, window):
+        for name in self.address_book:
+            #values は空
+            self.address_book[name]('window_finalized', {}, window)
+        pass
 
 
 
@@ -1197,6 +1209,7 @@ def event_initial():
     window['-FILELIST-'].expand(True, True)
     window['-ZIPLIST-'].expand(True, True)
 
+
     window['-CSVFILENAME-'].update(config.get('output', 'csvfilename'))
 
     window['-PROGRESSBAR-'].expand(True, False)
@@ -1502,6 +1515,8 @@ messenger.register_destination('urlList', urlListWidget.receive_message)
 
 window = sg.Window('Chiki Chiki Checker', layout, enable_close_attempted_event=True)
 window.finalize()
+
+messenger.send_window_finalized_message(window)
 
 progress_bar = ProgressBar(window, '-PROGRESSBAR-')
 
