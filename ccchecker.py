@@ -393,22 +393,6 @@ def set_list_to_write(thread, url, to_write):
     
     return
 ###-----------
-#ここはarchive.today用に
-def scrap_archive_today_log(thread, url, to_write):
-    soup = BeautifulSoup(thread, 'html.parser')
-    
-    thread_title, thread_number = split_thread_meta_archive_today(soup)
-
-    pass
-
-def split_thread_meta_archive_today(soup):
-    thread_title = soup.select('title')[0].get_text()
-    thread_number = ''
-    ret = re.search(r'\d+', soup.select('span[old-class^="cno"]')[0].get_text())
-    if ret:
-        thread_number = ret.group(0)
-    
-    return thread_title, thread_number
 
 ###--------------
 #いっそクラス化しちゃえ
@@ -443,31 +427,96 @@ class Scraper():
             'res': ''
         }
 
+        #魚拓サイトごとのパーサーを用意しとくよ！
+        self.scrapParser = {
+            'archive.today': ArchiveTodayParser(),
+            'FTBucket': FtbucketParser()
+        }
 
+    #サイトもこっちで判別しようか
     def scrap_thread(self, thread, url, to_write):
-        pass
+        soup = BeautifulSoup(thread, 'html.parser') #ギュッと珍獣あきの汚ねースープを出すよ！
+        site = self.check_site(soup) #スープで判別できるといいなあ
+
+        thread_title = self.scrapParser[site].get_thread_title(soup)
+        thread_number = self.scrapParser[site].get_thread_number(soup)
+
+        #スレ主のデータ
+        munen, name, timestamp, res_id, soudane, res, res_ip = self.scrapParser[site].get_thread_dominus(soup)
+
+        #パックして詰める        
+        self.pack_futaba_res_dict(to_write, url, thread_number, thread_title, '0', munen, name, timestamp, res_id, soudane, res, res_ip)
+
+        #子レスリストをゲット
+        children  = []
+        self.scrapParser[site].get_thread_child_list(soup, children)
+
+        #ぶんまわす
+        for child in children:
+            number, munen, name, timestamp, res_id, soudane, res, res_ip = self.scrapParser[site].get_thread_child(child)
+            #パックして詰める        
+            self.pack_futaba_res_dict(to_write, url, thread_number, thread_title, number, munen, name, timestamp, res_id, soudane, res, res_ip)
+        
+        #おしまい
 
 
+    #ソースから抜いてきたやつを辞書にまとめてリストイン
+    def pack_futaba_res_dict(
+        self,
+        to_write,
+        url,
+        thread_number,
+        thread_title,
+        number,
+        munen,
+        name,
+        timestamp,
+        res_id,
+        soudane,
+        res,
+        res_ip
+        ):
 
-    def get_thread_title(self, soup):
-        pass
+        #タイムスタンプ分解
+        date, weekday, time, ip, domain = self.split_timestamp(timestamp)
+
+        #レス内IPが存在してタイムスタンプのIPと重なってたらIP書き換え
+        #ねんのために小文字化しとく(in はケースセンシティブ)
+        #文末ピリオド(ipv6はコロン)、アスタリスクに注意
+        if res_ip:
+            if ip.replace('.*', '').lower() in res_ip.lower():
+                ip = res_ip
+
+        #dictにパックして詰める
+        to_write.append(self.get_futaba_res_dict(
+            url,
+            thread_number,
+            thread_title,
+            number,
+            munen,
+            name,
+            date,
+            weekday,
+            time,
+            ip,
+            domain,
+            self.get_res_id(number),
+            self.get_soudane(soudane),
+            self.reform_res(res)
+        ))
 
 
+    #scrapParser のキーを返してね
+    def check_site(self, soup):
 
-    def get_thread_number(self, soup):
-        pass
+        if 'archive.' in soup.select('head meta[property="og:site_name"]')['content'].get_text() 
+            return 'archive.today' #ヘッダーのメタに'archive.*'が含まれてたらとりあえずarchive.today
 
-
-
-    def get_thread_dominus(self, soup):
-        pass
-
-
-
-    def get_thread_res(self, soup):
-        pass
+        #よくわかんないので汎用のftbucket返しとく
+        return 'FTBucket'
 
 
+    #そうだね数
     def get_soudane(self, text):
         ret = self.re_numbers.search(text)
         if ret:
@@ -475,6 +524,7 @@ class Scraper():
         else:
             return '0'
 
+    #No.xxxxxx.. のやつ
     def get_res_id(self, text):
         ret = self.re_numbers.search(text)
         if ret:
@@ -482,26 +532,15 @@ class Scraper():
         else:
             return ''
 
-    def get_res_ip(self, soup):
-        chk = soup.select('blockquote font[color="#ff0000"]')
-        if not chk:
-            return None
-        
-        ret = re_res_ip.search(chk[0].get_text())
-
-        if ret:
-            return ret.group(0)
-        else
-            return None
-    
+    #レスのテキスト整形
     def reform_res(self, text):
         ret = text
-        ret = re_link.sub('', ret)
-        ret = re_res_ip_reform.sub(r'[\1]', ret)
+        ret = re_link.sub('', ret) #[link]を消す
+        ret = re_res_ip_reform.sub(r'[\1]', ret) #ip部分の表示を整形
         return ret
 
 
-
+    #タイムスタンプ分割
     def split_timestamp(self, text):
         ret_date = self.re_date.search(text)
         ret_time = self.re_time.search(text)
@@ -536,8 +575,7 @@ class Scraper():
         return date, weekday, time, ip, domain
 
 
-
-
+    #ふたばレス辞書にまとめる
     def get_futaba_res_dict(self,
         url='',
         thread_number='0',
@@ -551,7 +589,7 @@ class Scraper():
         ip='000.000.*',
         domain='xxx.com',
         res_id='0',
-        soudane='+',
+        soudane='0',
         res=''
         ):
             
@@ -574,6 +612,125 @@ class Scraper():
 
 
 
+#生のソースから情報抜くところは別にクラス化
+class ScrapParser():
+    def __init__(self):
+        pass
+
+    def get_thread_title(self, soup):
+        pass
+
+    def get_thread_number(self, soup):
+        pass
+
+    #return  munen, name, timestamp, res_id(=thread number), soudane, res, res_ip
+    def get_thread_dominus(self, soup):
+        pass
+    
+    #return number, munen, name, timestamp, res_id, soudane, res, res_ip
+    def get_thread_child(self, soup):
+        pass
+
+    #return child list
+    #reses.append()してね
+    def get_thread_child_list(self, soup, children):
+        pass
+
+    def get_res_ip(self, soup):
+        pass
+
+
+class FtbucketParser(ScrapParser):
+    def __init__(self):
+        super().__init__()
+    
+    def get_thread_title(self, soup):
+        return soup.select('title')[0].get_text()
+    
+    def get_thread_number(self, soup):
+        return soup.select('span.thre')[0]['data-res']
+    
+    def get_thread_dominus(self, soup):
+        munen = soup.select('span.csb')[0].get_text()
+        name = soup.select('span.cnm')[0].get_text()
+        timestamp = soup.select('span.cnw')[0].get_text()
+        res_id = soup.select('span.cno')[0].get_text()
+        soudane = soup.select('a.sod')[0].get_text()
+        res = soup.select('blockquote')[0].get_text('\n')
+
+        #レス部分のIPもチェック
+        res_ip = self.get_res_ip(soup)
+
+        return munen, name, timestamp, res_id, soudane, res, res_ip
+    
+    def get_thread_child(self, soup):
+        number = soup.select('span.rsc')[0].get_text()
+        munen = soup.select('span.csb')[0].get_text()
+        name = soup.select('span.cnm')[0].get_text()
+        timestamp = soup.select('span.cnw')[0].get_text()
+        res_id = soup.select('span.cno')[0].get_text()
+        soudane = soup.select('a.sod')[0].get_text()
+        res = soup.select('blockquote')[0].get_text('\n')
+
+        #レス部分のIPもチェック
+        res_ip = self.get_res_ip(soup)
+
+        return number, munen, name, timestamp, res_id, soudane, res, res_ip
+    
+    def get_thread_child_list(self, soup, children):
+        for child in soup.select('td.rtd'):
+            children.append(child)
+
+    def get_res_ip(self, soup):
+        chk = soup.select('blockquote font[color="#ff0000"]')
+        if not chk:
+            return None
+    
+        ret = re_res_ip.search(chk[0].get_text())
+
+        if ret:
+            return ret.group(0)
+        else:
+            return None
+
+    
+
+# archive.today用
+# スレ番号がない？(spna.thre の data-res 属性)
+# 方法1: スレ主のレス番号をスレ番号にする
+# #    ret = re.search(r'\d+', soup.select('span[old-class^="cno"]')[0].get_text())
+# 方法2: 空欄にしちゃう
+# 方法3:div[old-class="thre"] span[id="delcheckxxxxxxxx"](1番目)を使う
+
+class ArchiveTodayParser(ScrapParser):
+    def __init__(self):
+        super().__init__()
+
+    def get_thread_title(self, soup):
+        pass
+
+    def get_thread_number(self, soup):
+        thread_number = soup.select('div[old-class="thre"] span')[0]['id'].get_text()
+        return thread_number.replace('delcheck', '')
+        pass
+
+    def get_thread_dominus(self, soup):
+        munen = soup.select('div[old-class="thre"] span[old-class="csb"]')[0].get_text()
+        name = soup.select('div[old-class="thre"] span[old-class="cnm"]')[0].get_text()
+        timestamp = soup.select('div[old-class="thre"] span[old-class="cnw"]')[0].get_text()
+        res_id = soup.select('div[old-class="thre"] span[old-class="cno"]')[0].get_text()
+        soudane = soup.select('div[old-class="thre"] a[old-class="sod"]')[0].get_text()
+                
+        pass
+
+    def get_thread_child(self, soup):
+        pass
+
+    def get_thread_child_list(self, soup, children):
+        pass
+
+    def get_res_ip(self, soup):
+        pass
 
 
 
