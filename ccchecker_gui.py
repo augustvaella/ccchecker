@@ -57,8 +57,8 @@ class Widget():
     
     #the message come from Messenger
     #part_nameでいろいろできるかも？
-    def receive_message(self, part_name, values, window):
-        self.handler[part_name](part_name, values, window)
+    def receive_message(self, window, part_name, values):
+        self.handler[part_name](window, part_name, values)
         #print('received message:'+ part_name + ' / ' + str(values) + ' / ' + str(window))
 
 
@@ -122,11 +122,13 @@ class FileListWidget(Widget):
             'addlistfile': self.add_list_to_list,
             'output': self.output_list,
             'list': self.touch_list,
-            'window_finalized': self.on_window_finalized
+            'window_finalized': self.on_window_finalized,
+            'window_close': self.on_window_close
         }
         self.file_types = file_types
         self.is_local_file = is_local_file
         self.file_types_list = file_types_list
+        self.listfile_path = self.name + 'list'
     
     def create(self):
         lyt = sg.Tab(
@@ -148,17 +150,17 @@ class FileListWidget(Widget):
 
         return lyt
 
-    def touch_list(self, part_name, values, window):
+    def touch_list(self, window, part_name, values):
         pass
     
-    def clear_list(self, part_name, values, window):
+    def clear_list(self, window, part_name, values):
         if sg.popup_yes_no('リストをクリアしますか？') == 'Yes':
             window[generate_key(self.name, 'list')].update('')
         pass
 
     #self.is_local_file == Trueならローカルファイル、さもなくばURL
     #暫定措置、ほかのモードが欲しければ拡張
-    def add_to_list(self, part_name, values, window):
+    def add_to_list(self, window, part_name, values):
         key = self.key('list')
 
         if self.is_local_file == True:
@@ -186,7 +188,7 @@ class FileListWidget(Widget):
 
 
 
-    def add_list_to_list(self, part_name, values, window):
+    def add_list_to_list(self, window, part_name, values):
         key = self.key('list')
         ret = sg.popup_get_file('リストファイルの選択:', multiple_files=False, modal=True, file_types=self.file_types_list)
         if not ret:
@@ -210,13 +212,14 @@ class FileListWidget(Widget):
     def initialize_list(self):
         pass
 
-    def expand_list_widget(self, part_name, values, window):
+    def expand_list_widget(self, window, part_name, values):
         key = self.key('list')
         window[key].expand(True, True)
 
 
 
-    def output_list(self, part_name, values, window):
+
+    def output_list(self, window, part_name, values):
         key = self.key('list')
         ret = sg.popup_get_file('書き出すリストファイルの選択:', save_as=True, multiple_files=False, modal=True, file_types=self.file_types_list)
         if not ret:
@@ -235,8 +238,30 @@ class FileListWidget(Widget):
     def get_listfile_to_initialize(self):
         pass
 
-    def on_window_finalized(self, part_name, values, window):
-        self.expand_list_widget(part_name, values, window)
+    def on_window_finalized(self, window, part_name, values):
+        default_list = ''
+        if os.path.isfile(self.listfile_path) == False:
+            try:
+                with open(self.listfile_path, 'w', encoding='utf-8') as f:
+                    f.write('\n')
+            except PermissionError as e:
+                sg.popup_error('保存用の設定ファイルを書き込めません。パーミッションエラーです。', e)
+        else:
+            try:
+                with open(self.listfile_path, 'r', encoding='utf-8') as f:
+                    default_list = f.read()
+            except PermissionError as e:
+                sg.popup_error('保存用の設定ファイルを読み込めません。パーミッションエラーです。', e)
+        
+        window[self.key('list')].update(default_list)
+        self.expand_list_widget(window, part_name, values)
+    
+    def on_window_close(self, window, part_name, values):
+        try:
+            with open(self.listfile_path, 'w', encoding='utf-8') as f:
+                f.write(values[self.key('list')])
+        except PermissionError as e:
+            sg.popup_error('保存用の設定ファイルを書き込めません。パーミッションエラーです。', e)
 
 """
     def receive_message(self, part_name, values, window):
@@ -263,13 +288,21 @@ class Messenger():
     address_book = {}
 
     def __init__(self):
+        self.key = ''
+        self.values = {} #とりあえずget_message()でゲットしたやつは持っとく
         pass
 
     #message_raw: window.read()
-    def get_message(self, message_raw, window):
+    #メッセージを受けとるよ！
+    def get_message(self, window, message_raw):
         key, values = message_raw
-        name, part_name = self.get_name(key) #part_name はname(メッセージ宛名のWidget名)の残余部分
-        self.send_message(name, part_name, values, window)
+        self.key = key
+        self.values = values
+
+    def dispatch_message(self, window):
+        #持ってるメッセージを配りなさい
+        name, part_name = self.get_name(self.key) #part_name はname(メッセージ宛名のWidget名)の残余部分
+        self.send_message(name, window, part_name, self.values)
 
     def get_name(self, key):
         #暫定措置
@@ -283,9 +316,9 @@ class Messenger():
             return names[0], ''
 
 
-    def send_message(self, name, part_name, values, window):
+    def send_message(self, name, window, part_name, values):
         if name in self.address_book:
-            self.address_book[name](part_name, values, window)
+            self.address_book[name](window, part_name, values)
         pass
 
     def register_destination(self, name, receiver):
@@ -294,9 +327,15 @@ class Messenger():
     #window.finalize() が出たときに全登録ガジェットに配られる特別なメッセージ
     def send_window_finalized_message(self, window):
         for name in self.address_book:
-            #values は空
-            self.address_book[name]('window_finalized', {}, window)
-        pass
+            #たぶんself.values は空だけど一応配っとく
+            self.address_book[name](window, 'window_finalized', self.values) 
+    
+    #window.close()が呼ばれそうなときに全登録ガジェットに配られる特別なメッセージ
+    def send_window_close_message(self, window):
+        for name in self.address_book:
+            #とりあえず持ってるself.valuesを配っとく
+            self.address_book[name](window, 'window_close', self.values)
+
 
 
 
@@ -1524,16 +1563,19 @@ event_initial()
 
 while True:
     message_raw = window.read()
+    messenger.get_message(window, message_raw)
     key, values = message_raw
 
     if key == sg.WIN_CLOSED or key == '-EXIT-' or key == sg.WINDOW_CLOSE_ATTEMPTED_EVENT:
         if sg.PopupYesNo('終了しますか？', modal=True) == 'Yes':
+            messenger.send_window_close_message(window)
             event_exit()
+            
             break
     
     always_event()
 
-    messenger.get_message(message_raw, window)
+    messenger.dispatch_message(window)
 
     if key in handler:
         handler[key]()
