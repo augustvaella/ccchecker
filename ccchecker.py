@@ -6,6 +6,7 @@ import re
 import csv
 import pickle
 import datetime 
+import requests
 
 # Chiki Chiki Checker
 
@@ -342,7 +343,8 @@ def load_thread_dict(filename):
     return ret
     
 
-
+#ふたばログそのまんま。
+#Shift_JIS, HTMLの書き換えなし
 def set_list_to_write(thread, url, to_write):
     soup = BeautifulSoup(thread, 'html.parser')
     thread_title, thread_number = split_thread_meta(soup)
@@ -390,8 +392,199 @@ def set_list_to_write(thread, url, to_write):
         to_write.append(res_dict)
     
     return
+###-----------
+#ここはarchive.today用に
+def scrap_archive_today_log(thread, url, to_write):
+    soup = BeautifulSoup(thread, 'html.parser')
+    
+    thread_title, thread_number = split_thread_meta_archive_today(soup)
+
+    pass
+
+def split_thread_meta_archive_today(soup):
+    thread_title = soup.select('title')[0].get_text()
+    thread_number = ''
+    ret = re.search(r'\d+', soup.select('span[old-class^="cno"]')[0].get_text())
+    if ret:
+        thread_number = ret.group(0)
+    
+    return thread_title, thread_number
+
+###--------------
+#いっそクラス化しちゃえ
+class Scraper():
+    def __init__(self):
+        self.re_date = re.compile(r'(\d\d)/(\d\d)/(\d\d)')
+        self.re_time = re.compile(r'(\d\d):(\d\d):(\d\d)')
+        self.re_weekday = re.compile(r'[日月火水木金土]')
+        self.re_ip = re.compile(r'IP:([0-9a-fA-F]+[\.:])+\*?')
+        self.re_domain = re.compile(r'\([0-9a-zA-Z\-\.]+\)')
+        self.re_ip_letters = re.compile(r'IP:')
+        self.re_brace = re.compile(r'[\(\)]')
+        self.re_numbers = re.compile(r'\d+')
+        self.re_link = re.compile(r'\[\nlink\n\]')
+        self.re_res_ip = re.compile(r'([0-9a-fA-F]+[\.:]?)+')
+        self.re_res_ip_reform = re.compile(r'\[\n(([0-9a-fA-F]+[\.:]?)+)\n]')
+
+        self.FUTABA_RESPONSE_TEMPLATE = {
+            'url': '',
+            'thread_number': 0,
+            'thread_title': '',
+            'number': 0,
+            'munen': '無念',
+            'name': 'としあき',
+            'date': '00/01/01',
+            'weekday': '月',
+            'time': '00:00:00',
+            'ip': '000.000.*',
+            'domain': 'xxx.com',
+            'res_id': 0,
+            'soudane': 0,
+            'res': ''
+        }
 
 
+    def scrap_thread(self, thread, url, to_write):
+        pass
+
+
+
+    def get_thread_title(self, soup):
+        pass
+
+
+
+    def get_thread_number(self, soup):
+        pass
+
+
+
+    def get_thread_dominus(self, soup):
+        pass
+
+
+
+    def get_thread_res(self, soup):
+        pass
+
+
+    def get_soudane(self, text):
+        ret = self.re_numbers.search(text)
+        if ret:
+            return ret.group(0)
+        else:
+            return '0'
+
+    def get_res_id(self, text):
+        ret = self.re_numbers.search(text)
+        if ret:
+            return ret.group(0)
+        else:
+            return ''
+
+    def get_res_ip(self, soup):
+        chk = soup.select('blockquote font[color="#ff0000"]')
+        if not chk:
+            return None
+        
+        ret = re_res_ip.search(chk[0].get_text())
+
+        if ret:
+            return ret.group(0)
+        else
+            return None
+    
+    def reform_res(self, text):
+        ret = text
+        ret = re_link.sub('', ret)
+        ret = re_res_ip_reform.sub(r'[\1]', ret)
+        return ret
+
+
+
+    def split_timestamp(self, text):
+        ret_date = self.re_date.search(text)
+        ret_time = self.re_time.search(text)
+        ret_weekday = self.re_weekday.search(text)
+        ret_ip = self.re_ip.search(text)
+        ret_domain = self.re_domain.search(text)
+
+        if ret_date:
+            date = ret_date.group(0)
+        else:
+            date = ''
+        
+        if ret_time:
+            time = ret_time.group(0)
+        else:
+            time = ''
+
+        if ret_weekday:
+            weekday = ret_weekday.group(0)
+        else:
+            weekday = ''
+
+        if ret_ip:
+            ip = re_ip_letters.sub('', ret_ip.group(0))
+        else:
+            ip = ''
+
+        if ret_domain:
+            domain = re_brace.sub('', ret_domain.group(0))
+        else:
+            domain = ''
+        return date, weekday, time, ip, domain
+
+
+
+
+    def get_futaba_res_dict(self,
+        url='',
+        thread_number='0',
+        thread_title='',
+        number='0',
+        munen='無念',
+        name='としあき',
+        date='00/01/01',
+        weekday='月',
+        time='00:00:00',
+        ip='000.000.*',
+        domain='xxx.com',
+        res_id='0',
+        soudane='+',
+        res=''
+        ):
+            
+        ret = self.FUTABA_RESPONSE_TEMPLATE.copy()
+        ret['url'] = url
+        ret['thread_number'] = thread_number
+        ret['thread_title'] = thread_title
+        ret['number'] = number
+        ret['munen'] = munen
+        ret['name'] = name
+        ret['date'] = date
+        ret['weekday'] = weekday
+        ret['time'] = time
+        ret['ip'] = ip
+        ret['domain'] = domain
+        ret['res_id'] = res_id
+        ret['soudane'] = soudane
+        ret['res'] = res
+        return ret
+
+
+
+
+
+
+
+
+
+
+
+
+
+###------------
 
 def write_thread_dict(filename, to_write):
     with open(filename, 'wb') as f:
@@ -421,3 +614,9 @@ def fetch_html_file(filename):
     with open(filename, 'r') as f:
         ret = f.read()
     return ret
+
+
+def get_url_data(url):
+    #data = requests.get(url)
+    data = requests.post(url)
+    return data
