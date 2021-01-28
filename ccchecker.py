@@ -500,17 +500,20 @@ class Scraper():
             time,
             ip,
             domain,
-            self.get_res_id(number),
+            self.get_res_id(res_id),
             self.get_soudane(soudane),
             self.reform_res(res)
         ))
 
 
     #scrapParser のキーを返してね
+    #megalodonはフレームになってるのでhttps://megalodon/... を https://megalodon/ref/... にしてください
     def check_site(self, soup):
-
-        if 'archive.' in soup.select('head meta[property="og:site_name"]')['content'].get_text() 
-            return 'archive.today' #ヘッダーのメタに'archive.*'が含まれてたらとりあえずarchive.today
+        
+        chk = soup.select('head meta[property="og:site_name"]')
+        if chk:
+            if 'archive.' in chk[0]['content']:
+                return 'archive.today' #ヘッダーのメタに'archive.*'が含まれてたらとりあえずarchive.today
 
         #よくわかんないので汎用のftbucket返しとく
         return 'FTBucket'
@@ -615,6 +618,8 @@ class Scraper():
 #生のソースから情報抜くところは別にクラス化
 class ScrapParser():
     def __init__(self):
+        self.re_res_ip = re.compile(r'([0-9a-fA-F]+[\.:]?)+')
+
         pass
 
     def get_thread_title(self, soup):
@@ -636,6 +641,7 @@ class ScrapParser():
     def get_thread_child_list(self, soup, children):
         pass
 
+    #ここはレス部分のスープを渡す
     def get_res_ip(self, soup):
         pass
 
@@ -648,7 +654,7 @@ class FtbucketParser(ScrapParser):
         return soup.select('title')[0].get_text()
     
     def get_thread_number(self, soup):
-        return soup.select('span.thre')[0]['data-res']
+        return soup.select('.thre')[0]['data-res']
     
     def get_thread_dominus(self, soup):
         munen = soup.select('span.csb')[0].get_text()
@@ -659,7 +665,7 @@ class FtbucketParser(ScrapParser):
         res = soup.select('blockquote')[0].get_text('\n')
 
         #レス部分のIPもチェック
-        res_ip = self.get_res_ip(soup)
+        res_ip = self.get_res_ip(soup.select('blockquote')[0])
 
         return munen, name, timestamp, res_id, soudane, res, res_ip
     
@@ -673,7 +679,7 @@ class FtbucketParser(ScrapParser):
         res = soup.select('blockquote')[0].get_text('\n')
 
         #レス部分のIPもチェック
-        res_ip = self.get_res_ip(soup)
+        res_ip = self.get_res_ip(soup.select('blockquote')[0])
 
         return number, munen, name, timestamp, res_id, soudane, res, res_ip
     
@@ -682,11 +688,11 @@ class FtbucketParser(ScrapParser):
             children.append(child)
 
     def get_res_ip(self, soup):
-        chk = soup.select('blockquote font[color="#ff0000"]')
+        chk = soup.select('font[color="#ff0000"]')
         if not chk:
             return None
     
-        ret = re_res_ip.search(chk[0].get_text())
+        ret = self.re_res_ip.search(chk[0].get_text())
 
         if ret:
             return ret.group(0)
@@ -706,31 +712,64 @@ class ArchiveTodayParser(ScrapParser):
     def __init__(self):
         super().__init__()
 
+
+
     def get_thread_title(self, soup):
-        pass
+        thread_title = soup.select('title')[0].get_text()
+        return thread_title
+
+
 
     def get_thread_number(self, soup):
-        thread_number = soup.select('div[old-class="thre"] span')[0]['id'].get_text()
+        thread_number = soup.select('div[old-class="thre"] span')[0]['id']
         return thread_number.replace('delcheck', '')
-        pass
+
+
 
     def get_thread_dominus(self, soup):
         munen = soup.select('div[old-class="thre"] span[old-class="csb"]')[0].get_text()
         name = soup.select('div[old-class="thre"] span[old-class="cnm"]')[0].get_text()
         timestamp = soup.select('div[old-class="thre"] span[old-class="cnw"]')[0].get_text()
-        res_id = soup.select('div[old-class="thre"] span[old-class="cno"]')[0].get_text()
+        res_id = soup.select('div[old-class="thre"] span[old-class="cno"] a')[0].get_text()
         soudane = soup.select('div[old-class="thre"] a[old-class="sod"]')[0].get_text()
-                
-        pass
+        res = soup.select('div[old-class="thre"] blockquote')[0].get_text('\n')
+        res_ip = self.get_res_ip(soup.select('div[old-class="thre"] blockquote')[0])
+        return munen, name, timestamp, res_id, soudane, res, res_ip
+
+
 
     def get_thread_child(self, soup):
-        pass
+        number = soup.select('span[old-class="rsc"]')[0].get_text()
+        munen = soup.select('span[old-class="csb"]')[0].get_text()
+        name = soup.select('span[old-class="cnm"]')[0].get_text()
+        timestamp = soup.select('span[old-class="cnw"]')[0].get_text()
+        res_id = soup.select('span[old-class="cno"] a')[0].get_text()
+        soudane = soup.select('a[old-class="sod"]')[0].get_text()
+        res = soup.select('blockquote')[0].get_text('\n')
+        res_ip = self.get_res_ip(soup.select('blockquote')[0])
+        return number, munen, name, timestamp, res_id, soudane, res, res_ip
+
+
+
 
     def get_thread_child_list(self, soup, children):
-        pass
+        for child in soup.select('div[old-class="thre"] table td[old-class="rtd"]'):
+            children.append(child)
+
+
 
     def get_res_ip(self, soup):
-        pass
+        chk = soup.select('font[color="#ff0000"]')
+        
+        if not chk:
+            return
+        
+        chk = self.re_res_ip.search(chk[0].get_text())
+
+        if chk:
+            return chk.group(0)
+        else:
+            return None
 
 
 
@@ -742,6 +781,66 @@ class ArchiveTodayParser(ScrapParser):
 
 
 ###------------
+
+#Scraper用のスレッドデータを取り出します
+class FetchThread():
+    def __init__(self):
+        self.fetch = {
+            'URL': self.url,
+            'megalodon': self.megalodon,
+            'localfile': self.localfile,
+            'FTBucket Zip': self.ftbucket_zip
+        }
+
+    def fetch_thread(self, address, is_url=False, is_ftbucket_zip=False):
+        if is_url == True:
+            if '//megalodon.jp/' in address:
+                return self.fetch['megalodon'](address)
+            else:
+                return self.fetch['URL'](address)
+        else:
+            if is_ftbucket_zip == True:
+                return self.fetch['FTBucket Zip'](address)
+            return self.fetch['localfile'](address)                
+
+
+    def url(self, url):
+        res = requests.get(url)
+        res.encoding = res.apparent_encoding #これいれないと文字化けします！！！
+        return res.text
+
+
+
+    def megalodon(self, url):
+        res = requests.get(url.replace('//megalodon.jp/', '//megalodon.jp/ref/'))
+        res.encoding = res.apparent_encoding #これいれないと文字化けします！！！
+        return res.text
+
+
+
+    def localfile(self, filename):
+        with open(filename, 'r') as f:
+            ret = f.read()
+        return ret
+        
+
+
+    def ftbucket_zip(self, filename):
+        with zipfile.ZipFile(filename) as log:
+            log_list = log.namelist()
+            log_index = [s for s in log_list if(r'index.htm' in s and r'gz' not in s)][0]
+            with log.open(log_index) as log_content:
+                ret = log_content.read()
+        return ret
+
+
+
+
+
+
+
+
+
 
 def write_thread_dict(filename, to_write):
     with open(filename, 'wb') as f:
