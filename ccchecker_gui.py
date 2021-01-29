@@ -6,9 +6,7 @@ import re
 
 # Chiki Chiki Checker GUI
 
-STR_TO_BOOL = {
-    'False': False, 'True': True
-}
+STR_TO_BOOL = {'False': False, 'True': True}
 
 # Widget 暫定ルール
 # key を '(Widget Name) (Part Name)'として、空白で区切る
@@ -27,14 +25,15 @@ def remove_emptyline(text):
     filelist_string = re.sub(r'\n[\n\s]*', r'\n', text)
     return ret
 
-def generate_key(name, part_name):
-    return name + GUI_MESSAGE_SPLIT_CHARACTER + part_name
-
-
 class Widget():
-    def __init__(self, name, message_split_character=GUI_MESSAGE_SPLIT_CHARACTER):
+    STR_TO_BOOL = {'False': False, 'True': True}
+    CONDITION_RANGE_SELECT = ['のみ', 'から', '以上', '以下']
+    GUI_MESSAGE_SPLIT_CHARACTER = '-'
+
+    def __init__(self, name, messenger=None, message_split_character=GUI_MESSAGE_SPLIT_CHARACTER):
         self.name = name
         self.handler = {}
+        self.messenger = messenger
         self.GUI_MESSAGE_SPLIT_CHARACTER = message_split_character
 
     def activate(self):
@@ -42,11 +41,17 @@ class Widget():
     def deactivate(self):
         pass
 
-    def load_config(self, config, window, values):
-        pass
+    def load_config(self, config, section, option):
+        if config.has_section(section) and config.has_option(section, option):
+            return config.get(section, option)
+        else:
+            return None
 
-    def save_config(self, config, window, values):
-        pass
+    def save_config(self, config, section, option, value):
+        if not config.has_section(section):
+            config.add_section(section)
+
+        config.set(section, option, value)
 
     def create(self):
         lyt = []
@@ -370,47 +375,420 @@ class InputStringWidget(Widget):
         window = message['window']
         values = message['values']
 
-        if config.has_section('Widget'):
-            ret = bool(config.get('Widget', self.key('isActive')))
-            window[self.key('isActive')].update(ret)
-            if ret:
-                self.activate_input(message)
 
-            window[self.key('input')].update(config.get('Widget', self.key('input')))
-            window[self.key('reg')].update(bool(config.get('Widget', self.key('reg'))))
+        ret = self.STR_TO_BOOL[self.load_config(config, 'Widget', self.key('isActive'))]
+        window[self.key('isActive')].update(ret)
+        if ret:
+            self.activate_input(message)
+
+        window[self.key('input')].update(self.load_config(config, 'Widget', self.key('input')))
+        window[self.key('reg')].update(self.STR_TO_BOOL[self.load_config(config, 'Widget', self.key('reg'))])
 
     def on_window_close(self, message):
         config = message['config']
         window = message['window']
         values = message['values']
 
-        if not config.has_section('Widget'):
-            config.add_section('Widget')
-
-        config.set('Widget', self.key('isActive'), str(values[self.key('isActive')]))
-        config.set('Widget', self.key('input'), str(values[self.key('input')]))
-        config.set('Widget', self.key('reg'), str(values[self.key('reg')]))
+        self.save_config(config, 'Widget', self.key('isActive'), str(values[self.key('isActive')]))
+        self.save_config(config, 'Widget', self.key('input'), str(values[self.key('input')]))
+        self.save_config(config, 'Widget', self.key('reg'), str(values[self.key('reg')]))
 
 
-"""
-    def receive_message(self, part_name, values, window):
-        self.handler[part_name](part_name, values, window)
-        #print('received message:'+ part_name + ' / ' + str(values) + ' / ' + str(window))
-        pass
-    """
 
-class TestWidget(Widget):
-    def __init__(self, name):
+class InputNumberWidget(Widget):
+    def __init__(self, name, input_type='number'):
         super().__init__(name)
         self.handler = {
-            'test': self.testMethod
+            'isActive': self.on_is_active,
+            'input_fore': self.on_input_fore,
+            'input_apre': self.on_input_apre,
+            'button_fore': self.on_button_fore,
+            'button_apre': self.on_button_apre,
+            'range': self.on_range,
+            'windowFinalized': self.on_window_finalized,
+            'windowClose': self.on_window_close
         }
-    
-    def testMethod(self):
+        self.input_handler = {
+            'number': self.input_number,
+            'date': self.input_date,
+            'time': self.input_time
+        }
+        self.input_type = input_type
+        self.re_date = re.compile(r'(\d\d)/(\d\d)/(\d\d)')
+        self.re_time = re.compile(r'(\d\d):(\d\d):(\d\d)')
+
+
+
+    def create(self):
+        lyt = [
+            sg.Checkbox(
+                '',
+                key=self.key('isActive'),
+                enable_events=True
+                ),
+            sg.InputText(
+                '',
+                key=self.key('input_fore'),
+                size=(15, 1),
+                enable_events=True,
+                #tooltip=TOOLTIP_COND[0],
+                disabled=True
+                ),
+            sg.Button(
+                '変更',
+                key=self.key('button_fore'),
+                enable_events=True,
+                disabled=True
+                ),
+            sg.Combo(
+                self.CONDITION_RANGE_SELECT,
+                self.CONDITION_RANGE_SELECT[0],
+                size=(4,1),
+                enable_events=True,
+                key=self.key('range'),
+                readonly=True
+                ),
+            sg.InputText(
+                '',
+                key=self.key('input_apre'),
+                size=(15, 1),
+                enable_events=True,
+                #tooltip=TOOLTIP_COND[0],
+                disabled=True
+                ),
+            sg.Button(
+                '変更',
+                key=self.key('button_apre'),
+                enable_events=True,
+                disabled=True
+                )
+            ]
+
+        return lyt
+
+
+
+    def on_is_active(self, message):
+        key = self.key('isActive')
+        window = message['window']
+        values = message['values']
+
+        if values[key] == True:
+            self.activate_input(message)
+        else:
+            self.deactivate_input(message)
+
+
+
+    def activate_input(self, message):
+        window = message['window']
+        values = message['values']
+
+        window[self.key('button_fore')].update(disabled=False)
+        window[self.key('button_apre')].update(disabled=False)
+
+
+
+    def deactivate_input(self, message):
+        window = message['window']
+        values = message['values']
+
+        window[self.key('button_fore')].update(disabled=True)
+        window[self.key('button_apre')].update(disabled=True)
+
+    def input_number(self, message, input_part_name):
+        window = message['window']
+        values = message['values']
+
+        while True:
+            ret = sg.popup_get_text('数字を入力してください:', default_text=values[input_part_name])
+            if ret is None:
+                break
+            elif not ret:
+                window[input_part_name].update('')
+                break
+            elif ret.isdecimal() == True:
+                window[input_part_name].update(ret)
+                break
+
+    def input_date(self, message, input_part_name):
+        window = message['window']
+        values = message['values']
+
+        if values[input_part_name]:
+            year, month, day = self.get_date_split(values[input_part_name])
+            if month:
+                ret = sg.popup_get_date(month, day, year)
+            else:
+                ret = sg.popup_get_date()
+        else:
+            ret = sg.popup_get_date()
+        if ret:
+            window[input_part_name].update(self.get_reformed_date(ret[2], ret[0], ret[1]))
+
+
+
+    def input_time(self, message, input_part_name):
+        window = message['window']
+        values = message['values']
+
+        while True:
+            ret = sg.popup_get_text('hh:mm:ssの形式で時刻を入力してください:', default_text=values[input_part_name])
+            if ret is None:
+                break
+            elif self.get_time(ret):
+                window[input_part_name].update(ret)
+                break
+
+    def get_reformed_date(self, year, month, day, split_character='/'):
+        return str(year).zfill(2)[-2:] + split_character + str(month).zfill(2) + split_character + str(day).zfill(2)
+
+    def is_date(self, year, month, day):
+        return (year >= 0 and year <= 99 and month >= 1 and month <= 12 and day >= 1 and day <= 31)
+
+    def is_time(self, hour, minute, second):
+        return (hour >= 0 and hour <= 23 and minute >= 0 and minute <= 59 and second >= 0 and second <= 59)
+
+    def get_date(self, text):
+        dt = self.re_date.search(text)
+        if dt:
+            if self.is_date(int(dt.group(1)), int(dt.group(2)), int(dt.group(3))):
+                return dt.group(0)
+            else:
+                return None
+        else:
+            return None
+
+    def get_date_split(self, text):
+        dt = self.re_date.search(text)
+        if dt:
+            if self.is_date(int(dt.group(1)), int(dt.group(2)), int(dt.group(3))):
+                return int(dt.group(1)), int(dt.group(2)), int(dt.group(3))
+            else:
+                return None
+        else:
+            return None
+
+    def get_time(self, text):
+        dt = self.re_time.search(text)
+        if dt:
+            if self.is_time(int(dt.group(1)), int(dt.group(2)), int(dt.group(3))):
+                return dt.group(0)
+            else:
+                return None
+        else:
+            return None
+
+    def get_time_split(self, text):
+        dt = self.re_time.search(text)
+        if dt:
+            if is_time(int(dt.group(1)), int(dt.group(2)), int(dt.group(3))):
+                return int(dt.group(1)), int(dt.group(2)), int(dt.group(3))
+            else:
+                return None
+        else:
+            return None
+
+
+
+    def on_input_fore(self, message):
         pass
 
+    def on_input_apre(self, message):
+        pass
 
-        
+    def on_button_fore(self, message):
+        self.input_handler[self.input_type](message, self.key('input_fore'))
+
+    def on_button_apre(self, message):
+        self.input_handler[self.input_type](message, self.key('input_apre'))
+         
+
+    def on_range(self, message):
+        pass
+
+    def on_window_finalized(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
+
+        ret = self.STR_TO_BOOL[self.load_config(config, 'Widget', self.key('isActive'))]
+        window[self.key('isActive')].update(ret)
+        if ret:
+            self.activate_input(message)
+
+        window[self.key('input_fore')].update(self.load_config(config, 'Widget', self.key('input_fore')))
+        window[self.key('input_apre')].update(self.load_config(config, 'Widget', self.key('input_apre')))
+        window[self.key('range')].update(self.load_config(config, 'Widget', self.key('range')))
+
+    def on_window_close(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
+
+        self.save_config(config, 'Widget', self.key('isActive'),  str(values[self.key('isActive')]))
+        self.save_config(config, 'Widget', self.key('input_fore'), values[self.key('input_fore')])
+        self.save_config(config, 'Widget', self.key('input_apre'), values[self.key('input_apre')])
+        self.save_config(config, 'Widget', self.key('range'), values[self.key('range')])
+
+
+
+class OutputFilenameWidget(Widget):
+    def __init__(self, name,
+     file_types=(('CSVファイル', '*.csv'), ('テキストファイル', '*.txt'), ('全てのファイル', '*.*'))
+     ):
+        super().__init__(name)
+        self.file_types = file_types
+        self.handler = {
+            'browse': self.on_browse,
+            'filename': self.on_filename,
+            'windowFinalized': self.on_window_finalized,
+            'windowClose': self.on_window_close
+        }
+
+    def on_filename(self, message):
+        pass
+
+    def on_browse(self, message):
+        pass
+
+    def on_window_finalized(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
+
+        window[self.key('filename')].update(self.load_config(config, 'Widget', self.key('filename')))
+
+
+
+    def on_window_close(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
+
+        self.save_config(config, 'Widget', self.key('filename'), values[self.key('filename')])
+
+
+
+    def create(self):
+        lyt = [
+            sg.Text('保存用CSVファイル名'), 
+            sg.Input('', enable_events=True, key=self.key('filename')),
+            sg.FileSaveAs('参照', key=self.key('browse'), file_types=self.file_types)
+            ]
+
+        return lyt
+
+
+
+class OKAndExitWidget(Widget):
+    def __init__(self, name, event_ok=None, event_exit=None):
+        super().__init__(name)
+        if not event_ok:
+            event_ok = self.on_ok
+        if not event_exit:
+            event_exit = self.on_exit
+        self.handler = {
+            'ok': event_ok,
+            'exit': event_exit,
+            'windowFinalized': self.on_window_finalized,
+            'windowClose': self.on_window_close
+        }
+
+    def on_window_finalized(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
+
+
+    def on_ok(self, message):
+        pass
+
+    def on_exit(self, message):
+        pass
+
+    def on_window_close(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
+
+    def create(self):
+        lyt = [
+            sg.Button('書き出し', key=self.key('ok')),
+            sg.Button('終了', key=self.key('exit'))
+            ]
+        return lyt
+
+
+
+class ProgressBarWidget(Widget):
+    def __init__(self, name, max=1000000, count=0, step=1):
+        super().__init__(name)
+        self.handler = {
+            'step': self.on_step,
+            'changeStep': self.on_change_step,
+            'finalStep': self.on_final_step,
+            'initialize': self.on_initialize,
+            'windowFinalized': self.on_window_finalized,
+            'windowClose': self.on_window_close
+        }
+        self.max = max
+        self.count = count
+        self.step = step
+
+    def on_step(self, message):
+        window = message['window']
+        values = message['values']
+
+        self.count += self.step
+        window[self.key('bar')].update(self.count)        
+
+
+    def on_change_step(self, message):
+        pass
+    def on_final_step(self, message):
+        self.step = self.max - self.count
+
+    def on_initialize(self, message):
+        window = message('window')
+        values = message('values')
+
+        max=1000000
+        count=0
+        step=1
+        self.max = max
+        self.step = step
+        self.count = count
+
+        window[self.key('bar')].update(self.count, self.max)
+
+       
+
+    def on_window_finalized(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
+
+        #window[self.key('input_fore')].update(self.load_config(config, 'Widget', self.key('input_fore')))
+
+    def on_window_close(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
+
+        #self.save_config(config, 'Widget', self.key('isActive'),  str(values[self.key('isActive')]))
+
+    def create(self):
+        lyt = [
+            sg.ProgressBar(
+                0,
+                size=(50, 20),
+                orientation='horizontal',
+                key=self.key('bar'))
+        ]
+
+        return lyt    
+
 
 
 class Messenger():
@@ -423,7 +801,7 @@ class Messenger():
         self.__config = config
         self.__window = None
         self.GUI_MESSAGE_SPLIT_CHARACTER = message_split_character
-        pass
+
 
     #メッセージ(self.key and self.key) は隠しとく(外から書き換え不可)
     @property
@@ -441,23 +819,23 @@ class Messenger():
     @property
     def window(self):
         return self.__window
-
+    
     #message_raw: window.read()
-    #メッセージを受けとるよ！
+    #PySimpleGUI.window.read() でメッセージを受けとるよ！
     def get_message(self, window, message_raw):
         key, values = message_raw
         self.__key = key
         self.__values = values
         self.__window = window
-
-    def dispatch_message(self, key=None, config=None, values=None, window=None):
+    
+    def dispatch_message(self, key=None, config=None, values=None, window=None, ps=None, by=None):
         #メッセージを配りなさい
-        message = self.pack_message(key=key, config=config, values=values, window=window)
+        message = self.pack_message(key=key, config=config, values=values, window=window, ps=ps, by=by)
         for name in self.address_book.keys():
             self.address_book[name](message)
         
 
-    def pack_message(self, key=None, config=None, values=None, window=None):
+    def pack_message(self, key=None, config=None, values=None, window=None, ps=None, by=None):
         if not key:
             key = self.key
         if not config:
@@ -468,12 +846,18 @@ class Messenger():
             values_copy = self.values.copy()
         if not window:
             window = self.window
+        if not ps:
+            ps_copy = {}
+        else:
+            ps_copy = ps.copy()
 
         return {
             'key': key,
             'config': config,
             'values': values_copy,
-            'window': window
+            'window': window,
+            'ps': ps_copy,
+            'by': by
         }
    
 
@@ -495,15 +879,72 @@ class Messenger():
 
 
 
-
-class SearchInputString(Widget):
+class PackConditionDict(Widget):
     def __init__(self, name):
         super().__init__(name)
-    
+        self.handler={
+            'pack': self.pack,
+            'windowFinalized': self.on_window_finalized,
+            'windowClose': self.on_window_close
+        }
+        self.range_handler = {
+            self.CONDITION_RANGE_SELECT[0]: lambda fore, apre: (fore, fore),
+            self.CONDITION_RANGE_SELECT[1]: lambda fore, apre: (fore, apre),
+            self.CONDITION_RANGE_SELECT[2]: lambda fore, apre: (fore, None),
+            self.CONDITION_RANGE_SELECT[3]: lambda fore, apre: (None, apre)
+        }
+        pass
+
+    def on_window_finalized(self, message):
+        pass
+
+    def on_window_close(self, message):
+        pass
+
+    def pack_string(self, message, ret, attr, name):
+        values = message['values']
+        if values[self.key('isActive', name)]:
+            if values[self.key('reg', name)]:
+                ret[attr] = ('reg word', values[self.key('input', name)], None)
+            else:
+                ret[attr] = ('free word', values[self.key('input', name)], None)
 
 
 
+    def pack_number(self, message, ret, attr, name):
+        values = message['values']
+        if values[self.key('isActive', name)]:
+            chk = self.range_handler[values[self.key('range', name)]](values[self.key('input_fore', name)], values[self.key('input_apre', name)])
+            ret[attr] = ('range', chk[0], chk[1])
 
+
+    def pack_date(self, message, ret, attr, name):
+        self.pack_number(message, ret, attr, name)
+
+    def pack_time(self, message, ret, attr, name):
+        self.pack_number(message, ret, attr, name)
+
+    def pack(self, message):
+        ret = {}
+
+        self.pack_string(ret, message, 'url', 'url')
+        self.pack_string(ret, message, 'thread_title', 'threadTitle')
+        self.pack_string(ret, message, 'munen', 'munen')
+        self.pack_string(ret, message, 'name', 'name')
+        self.pack_string(ret, message, 'weekday', 'weekday')
+        self.pack_string(ret, message, 'ip', 'ip')
+        self.pack_string(ret, message, 'domain', 'domain')
+        self.pack_string(ret, message, 'res', 'res')
+
+        self.pack_number(ret, message, 'thread_number', 'threadNumber')
+        self.pack_number(ret, message, 'number', 'number')
+        self.pack_number(ret, message, 'res_id', 'resId')
+        self.pack_number(ret, message, 'soudane', 'soudane')
+
+        self.pack_date(ret, message, 'date', 'date')
+        self.pack_time(ret, message, 'time', 'time')
+
+        pass
 
 
 
@@ -518,61 +959,6 @@ if os.path.isfile(CONFIG_INI_PATH) == False:
 else:
     with open(CONFIG_INI_PATH, 'r', encoding='utf-8') as f:
         config.read_file(f)
-
-if is_config_ini_initialized == True:
-    config.add_section('window')
-    config.add_section('output')
-    config.add_section('condition')
-
-    config.set('output', 'csvfilename', '')
-    config.set('condition', 'threadnumberFrom', '')
-    config.set('condition', 'threadnumberTo', '')
-    config.set('condition', 'threadnumberRange', 'のみ')
-    config.set('condition', 'threadnumberIscond', 'False')
-    config.set('condition', 'threadtitle', '')
-    config.set('condition', 'threadtitleReg', 'False')
-    config.set('condition', 'threadtitleIscond', 'False')
-    config.set('condition', 'numberFrom', '')
-    config.set('condition', 'numberTo', '')
-    config.set('condition', 'numberRange', 'のみ')
-    config.set('condition', 'numberIscond', 'False')
-    config.set('condition', 'munen', '')
-    config.set('condition', 'munenReg', 'False')
-    config.set('condition', 'munenIscond', 'False')
-    config.set('condition', 'name', '')
-    config.set('condition', 'nameReg', 'False')
-    config.set('condition', 'nameIscond', 'False')
-    config.set('condition', 'dateFrom', '')
-    config.set('condition', 'dateTo', '')
-    config.set('condition', 'dateRange', 'のみ')
-    config.set('condition', 'dateIscond', 'False')
-    config.set('condition', 'weekday', '')
-    config.set('condition', 'weekdayReg', 'False')
-    config.set('condition', 'weekdayIscond', 'False')
-    config.set('condition', 'timeFrom', '')
-    config.set('condition', 'timeTo', '')
-    config.set('condition', 'timeRange', 'のみ')
-    config.set('condition', 'timeIscond', 'False')
-    config.set('condition', 'ip', '')
-    config.set('condition', 'ipReg', 'False')
-    config.set('condition', 'ipIscond', 'False')
-    config.set('condition', 'domain', '')
-    config.set('condition', 'domainReg', 'False')
-    config.set('condition', 'domainIscond', 'False')
-    config.set('condition', 'residFrom', '')
-    config.set('condition', 'residTo', '')
-    config.set('condition', 'residRange', 'のみ')
-    config.set('condition', 'residIscond', 'False')
-    config.set('condition', 'soudaneFrom', '')
-    config.set('condition', 'soudaneTo', '')
-    config.set('condition', 'soudaneRange', 'のみ')
-    config.set('condition', 'soudaneIscond', 'False')
-    config.set('condition', 'res', '')
-    config.set('condition', 'resReg', 'False')
-    config.set('condition', 'resIscond', 'False')
-
-    with open(CONFIG_INI_PATH, 'w', encoding='utf-8') as f:
-        config.write(f)
 
 
 
@@ -619,463 +1005,7 @@ store_cond6z = '00/01/01 00:00:00'
 
 #sg.theme('Light Brown 12')
 
-widgets = {}
-handlers = {}
-
-# ウィジェットの名前(name)にアンダーバーを用いないこと
-# (ウィジェットのキーからの名前抽出判定にアンダーバーを用いてるため)
-def initialize_widget_name(name, aim, widget):
-    widgets[name] = {}
-    widgets[name]['key'] = {}
-    widgets[name]['event'] = {}
-
-    for x in aim:
-        set_widget_key(name, x)
-        set_widget_event(name, x, widget)
-        set_widget_event_to_handler(name, x)    
-
-
-def set_widget_key(name, aim):
-    widgets[name]['key'][aim] = '-' + aim.upper() + '_' + name.upper() + '-'
-    return widgets[name]['key'][aim]
-
-def set_widget_event(name, aim, widget):
-    widgets[name]['event'][aim] = 'event_' + aim.lower() + '_' + widget.lower()
-    return widgets[name]['event'][aim]
-
-def set_widget_event_to_handler(name, aim):
-    handlers[widgets[name]['key'][aim]] = eval(widgets[name]['event'][aim])
-    return handlers[widgets[name]['key'][aim]]
-
-
-def set_search_input_string(name):
-    widget = 'search_input_string'
-    aim = ['iscond', 'cond', 'reg']
-
-    initialize_widget_name(name, aim, widget)
-
-    lyt = [
-        sg.Checkbox(
-            '',
-            key=widgets[name]['key']['iscond'],
-            enable_events=True
-            ),
-        sg.InputText(
-            '',
-            key=widgets[name]['key']['cond'],
-            size=CONDITION_INPUT_SINGLE,
-            enable_events=True,
-            tooltip=TOOLTIP_COND[0],
-            disabled=True
-            ),
-        sg.Checkbox(
-            '正規表現',
-            key=widgets[name]['key']['reg'],
-            disabled=True
-            )]
-
-    return lyt
-
-def enable_iscond_search_input_string(name):
-    window[widgets[name]['key']['cond']].update(disabled=False)
-    window[widgets[name]['key']['reg']].update(disabled=False)
-
-
-
-def load_config_search_input_string(name):
-    iscond = STR_TO_BOOL[config.get('condition', name.replace(' ', '') + 'Iscond')]
-    
-    window[widgets[name]['key']['iscond']].update(iscond)
-    window[widgets[name]['key']['reg']].update(STR_TO_BOOL[config.get('condition', name.replace(' ', '') + 'Reg')])
-    window[widgets[name]['key']['cond']].update(config.get('condition', name.replace(' ', '')))
-
-    if iscond == True:
-        enable_iscond_search_input_string(name)
-
-
-def save_config_search_input_string(name):
-    config.set('condition', name.replace(' ', ''), values[widgets[name]['key']['cond']])
-    config.set('condition', name.replace(' ', '') + 'Iscond', str(values[widgets[name]['key']['iscond']]))
-    config.set('condition', name.replace(' ', '') + 'Reg', str(values[widgets[name]['key']['reg']]))
-    
-
-
-def set_search_input_number(name):
-    widget = 'search_input_number'
-    aim = ['iscond', 'from', 'to', 'bfrom', 'bto', 'range']
-
-    initialize_widget_name(name, aim, widget)
-
-    lyt = [
-        sg.Checkbox(
-            '',
-            key= widgets[name]['key']['iscond'],
-            enable_events=True
-            ),
-        sg.InputText(
-            '',
-            key=widgets[name]['key']['from'],
-            size=CONDITION_INPUT_DOUBLE,
-            enable_events=True,
-            tooltip=TOOLTIP_COND[1],
-            disabled_readonly_background_color=sg.theme_input_background_color(),
-            disabled_readonly_text_color=sg.theme_input_text_color(),
-            readonly=True,
-            disabled=True
-            ),
-        sg.Button(
-            '変更',
-            key=widgets[name]['key']['bfrom'],
-            enable_events=True,
-            disabled=True
-            ),
-        sg.Combo(
-            CONDITION_RANGE_SELECT,
-            CONDITION_RANGE_SELECT[0],
-            size=(4,1),
-            enable_events=True,
-            key=widgets[name]['key']['range'],
-            readonly=True
-            ),
-        sg.InputText(
-            '',
-            key=widgets[name]['key']['to'],
-            size=CONDITION_INPUT_DOUBLE,
-            enable_events=True,
-            tooltip=TOOLTIP_COND[1],
-            disabled_readonly_background_color=sg.theme_input_background_color(),
-            disabled_readonly_text_color=sg.theme_input_text_color(),
-            readonly=True,
-            disabled=True
-            ),
-        sg.Button(
-            '変更',
-            key=widgets[name]['key']['bto'],
-            enable_events=True,
-            disabled=True
-            )]
-    
-    return lyt
-
-def enable_iscond_search_input_number(name):
-    window[widgets[name]['key']['bfrom']].update(disabled=False)
-    window[widgets[name]['key']['bto']].update(disabled=False)
-
-def load_config_search_input_number(name):
-    iscond = STR_TO_BOOL[config.get('condition', name.replace(' ', '') + 'Iscond')]
-    window[widgets[name]['key']['iscond']].update(iscond)
-    window[widgets[name]['key']['range']].update(config.get('condition', name.replace(' ', '') + 'Range'))
-    window[widgets[name]['key']['from']].update(config.get('condition', name.replace(' ', '') + 'From'))
-    window[widgets[name]['key']['to']].update(config.get('condition', name.replace(' ', '') + 'To'))
-
-    if iscond == True:
-        enable_iscond_search_input_number(name)
-
-def save_config_search_input_number(name):
-    config.set('condition', name.replace(' ', '') + 'From', values[widgets[name]['key']['from']])
-    config.set('condition', name.replace(' ', '') +  'To', values[widgets[name]['key']['to']])
-    config.set('condition', name.replace(' ', '') + 'Iscond', str(values[widgets[name]['key']['iscond']]))
-    config.set('condition', name.replace(' ', '') + 'Range', values[widgets[name]['key']['range']])
-
-
-
-def set_search_input_date(name):
-    widget = 'search_input_date'
-    aim = ['iscond', 'from', 'to', 'bfrom', 'bto', 'range']
-
-    initialize_widget_name(name, aim, widget)
-
-    lyt = [
-        sg.Checkbox(
-            '',
-            key= widgets[name]['key']['iscond'],
-            enable_events=True
-            ),
-        sg.InputText(
-            '',
-            key=widgets[name]['key']['from'],
-            size=CONDITION_INPUT_DOUBLE,
-            enable_events=True,
-            tooltip=TOOLTIP_COND[1],
-            disabled_readonly_background_color=sg.theme_input_background_color(),
-            disabled_readonly_text_color=sg.theme_input_text_color(),
-            readonly=True,
-            disabled=True
-            ),
-        sg.Button(
-            '変更',
-            key=widgets[name]['key']['bfrom'],
-            enable_events=True,
-            disabled=True
-            ),
-        sg.Combo(
-            CONDITION_RANGE_SELECT,
-            CONDITION_RANGE_SELECT[0],
-            size=(4,1),
-            enable_events=True,
-            key=widgets[name]['key']['range'],
-            readonly=True
-            ),
-        sg.InputText(
-            '',
-            key=widgets[name]['key']['to'],
-            size=CONDITION_INPUT_DOUBLE,
-            enable_events=True,
-            tooltip=TOOLTIP_COND[1],
-            disabled_readonly_background_color=sg.theme_input_background_color(),
-            disabled_readonly_text_color=sg.theme_input_text_color(),
-            readonly=True,
-            disabled=True
-            ),
-        sg.Button(
-            '変更',
-            key=widgets[name]['key']['bto'],
-            enable_events=True,
-            disabled=True
-            )]
-    
-    return lyt
-
-
-
-def enable_iscond_search_input_date(name):
-    window[widgets[name]['key']['bfrom']].update(disabled=False)
-    window[widgets[name]['key']['bto']].update(disabled=False)
-
-
-
-def load_config_search_input_date(name):
-    iscond = STR_TO_BOOL[config.get('condition', name.replace(' ', '') + 'Iscond')]
-    window[widgets[name]['key']['iscond']].update(iscond)
-    window[widgets[name]['key']['range']].update(config.get('condition', name.replace(' ', '') + 'Range'))
-    window[widgets[name]['key']['from']].update(config.get('condition', name.replace(' ', '') + 'From'))
-    window[widgets[name]['key']['to']].update(config.get('condition', name.replace(' ', '') + 'To'))
-
-    if iscond == True:
-        enable_iscond_search_input_date(name)
-
-
-def save_config_search_input_date(name):
-    config.set('condition', name.replace(' ', '') + 'From', values[widgets[name]['key']['from']])
-    config.set('condition', name.replace(' ', '') +  'To', values[widgets[name]['key']['to']])
-    config.set('condition', name.replace(' ', '') + 'Iscond', str(values[widgets[name]['key']['iscond']]))
-    config.set('condition', name.replace(' ', '') + 'Range', values[widgets[name]['key']['range']])
-
-
-
-def set_search_input_time(name):
-    widget = 'search_input_time'
-    aim = ['iscond', 'from', 'to', 'bfrom', 'bto', 'range']
-
-    initialize_widget_name(name, aim, widget)
-
-    lyt = [
-        sg.Checkbox(
-            '',
-            key= widgets[name]['key']['iscond'],
-            enable_events=True
-            ),
-        sg.InputText(
-            '',
-            key=widgets[name]['key']['from'],
-            size=CONDITION_INPUT_DOUBLE,
-            enable_events=True,
-            tooltip=TOOLTIP_COND[1],
-            disabled_readonly_background_color=sg.theme_input_background_color(),
-            disabled_readonly_text_color=sg.theme_input_text_color(),
-            readonly=True,
-            disabled=True
-            ),
-        sg.Button(
-            '変更',
-            key=widgets[name]['key']['bfrom'],
-            enable_events=True,
-            disabled=True
-            ),
-        sg.Combo(
-            CONDITION_RANGE_SELECT,
-            CONDITION_RANGE_SELECT[0],
-            size=(4,1),
-            enable_events=True,
-            key=widgets[name]['key']['range'],
-            readonly=True
-            ),
-        sg.InputText(
-            '',
-            key=widgets[name]['key']['to'],
-            size=CONDITION_INPUT_DOUBLE,
-            enable_events=True,
-            tooltip=TOOLTIP_COND[1],
-            disabled_readonly_background_color=sg.theme_input_background_color(),
-            disabled_readonly_text_color=sg.theme_input_text_color(),
-            readonly=True,
-            disabled=True
-            ),
-        sg.Button(
-            '変更',
-            key=widgets[name]['key']['bto'],
-            enable_events=True,
-            disabled=True
-            )]
-    
-    return lyt
-
-
-
-def enable_iscond_search_input_time(name):
-    window[widgets[name]['key']['bfrom']].update(disabled=False)
-    window[widgets[name]['key']['bto']].update(disabled=False)
-
-
-
-def load_config_search_input_time(name):
-    iscond = STR_TO_BOOL[config.get('condition', name.replace(' ', '') + 'Iscond')]
-
-    window[widgets[name]['key']['iscond']].update(iscond)
-    window[widgets[name]['key']['range']].update(config.get('condition', name.replace(' ', '') + 'Range'))
-    window[widgets[name]['key']['from']].update(config.get('condition', name.replace(' ', '') + 'From'))
-    window[widgets[name]['key']['to']].update(config.get('condition', name.replace(' ', '') + 'To'))
-
-    if iscond == True:
-        enable_iscond_search_input_time(name)
-
-
-
-def save_config_search_input_time(name):
-    config.set('condition', name.replace(' ', '') + 'From', values[widgets[name]['key']['from']])
-    config.set('condition', name.replace(' ', '') +  'To', values[widgets[name]['key']['to']])
-    config.set('condition', name.replace(' ', '') + 'Iscond', str(values[widgets[name]['key']['iscond']]))
-    config.set('condition', name.replace(' ', '') + 'Range', values[widgets[name]['key']['range']])
-
-
-
-def event_cond_search_input_string(name):
-    return
-
-
-
-def event_iscond_search_input_string(name):
-    if values[widgets[name]['key']['iscond']] == True:
-        enable_iscond_search_input_string(name)
-    else:
-        window[widgets[name]['key']['cond']].update(disabled=True)
-        window[widgets[name]['key']['reg']].update(disabled=True)
-
-
-
-def event_reg_search_input_string(name):
-    return
-
-
-
-def event_iscond_search_input_number(name):
-    if values[widgets[name]['key']['iscond']] == True:
-        enable_iscond_search_input_number(name)
-    else:
-        window[widgets[name]['key']['bfrom']].update(disabled=True)
-        window[widgets[name]['key']['bto']].update(disabled=True)
-    return
-
-
-
-def event_from_search_input_number(name):
-    return
-
-
-
-def event_to_search_input_number(name):
-    return
-
-
-
-def event_bfrom_search_input_number(name):
-    input_number(widgets[name]['key']['from'])
-    return
-
-
-
-def event_bto_search_input_number(name):
-    input_number(widgets[name]['key']['to'])
-    return
-
-
-
-def event_range_search_input_number(name):
-    return
-
-
-
-def event_iscond_search_input_date(name):
-    if values[widgets[name]['key']['iscond']] == True:
-        enable_iscond_search_input_date(name)
-    else:
-        window[widgets[name]['key']['bfrom']].update(disabled=True)
-        window[widgets[name]['key']['bto']].update(disabled=True)
-    return
-
-
-
-def event_from_search_input_date(name):
-    return
-
-
-
-def event_to_search_input_date(name):
-    return
-
-
-
-def event_bfrom_search_input_date(name):
-    input_date(widgets[name]['key']['from'])
-    return
-
-
-
-def event_bto_search_input_date(name):
-    input_date(widgets[name]['key']['to'])
-    return
-
-
-
-def event_range_search_input_date(name):
-    return
-
-
-
-def event_iscond_search_input_time(name):
-    if values[widgets[name]['key']['iscond']] == True:
-        enable_iscond_search_input_time(name)
-    else:
-        window[widgets[name]['key']['bfrom']].update(disabled=True)
-        window[widgets[name]['key']['bto']].update(disabled=True)
-    return
-
-
-
-def event_from_search_input_time(name):
-    return
-
-
-
-def event_to_search_input_time(name):
-    return
-
-
-
-def event_bfrom_search_input_time(name):
-    input_time(widgets[name]['key']['from'])
-    return
-
-
-
-def event_bto_search_input_time(name):
-    input_time(widgets[name]['key']['to'])
-    return
-
-
-
-def event_range_search_input_time(name):
-    return
+messenger = Messenger('Messenger', config)
 
 
 
@@ -1097,22 +1027,35 @@ layout_condition_text = sg.Column([
     ], element_justification='right')
 
 url_input_widget = InputStringWidget('urlInput')
+thread_number_input_widget = InputNumberWidget('threadNumber')
+thread_title_input_widget = InputStringWidget('threadTitle')
+number_input_widget = InputNumberWidget('number')
+munen_input_widget = InputStringWidget('munen')
+name_input_widget = InputStringWidget('name')
+date_input_widget = InputNumberWidget('date', input_type='date')
+weekday_input_widget = InputStringWidget('weekday')
+time_input_widget = InputNumberWidget('time', input_type='time')
+ip_input_widget = InputStringWidget('ip')
+domain_input_widget = InputStringWidget('domain')
+res_id_input_widget = InputNumberWidget('resId')
+soudane_input_widget = InputStringWidget('soudane')
+res_input_widget = InputStringWidget('res')
 
 layout_condition_input = sg.Column([
     url_input_widget.create(),
-    set_search_input_number('thread number'),
-    set_search_input_string('thread title'),
-    set_search_input_number('number'),
-    set_search_input_string('munen'),
-    set_search_input_string('name'),
-    set_search_input_date('date'),
-    set_search_input_string('weekday'),
-    set_search_input_time('time'),
-    set_search_input_string('ip'),
-    set_search_input_string('domain'),
-    set_search_input_number('res id'),
-    set_search_input_number('soudane'),
-    set_search_input_string('res')
+    thread_number_input_widget.create(),
+    thread_title_input_widget.create(),
+    number_input_widget.create(),    
+    munen_input_widget.create(),
+    name_input_widget.create(),
+    date_input_widget.create(),
+    weekday_input_widget.create(),
+    time_input_widget.create(),
+    ip_input_widget.create(),
+    domain_input_widget.create(),
+    res_id_input_widget.create(),
+    soudane_input_widget.create(),
+    res_input_widget.create()
     ])
 
 layout_tab_condition = sg.Tab('検索条件',[
@@ -1126,133 +1069,18 @@ fileListWidget = FileListWidget('fileList', tab_text='ファイル', file_types=
 zipListWidget = FileListWidget('zipList', tab_text='ftbucketDLログZip', file_types=file_types_ziplog)
 urlListWidget = FileListWidget('urlList', tab_text='URL', is_local_file=False)
 
-
 layout_tab_setting = sg.Tab('設定', [])
+
+output_filename_widget = OutputFilenameWidget('outputFilename')
+ok_and_exit_widget = OKAndExitWidget('okAndExit')
+progress_bar_widget = ProgressBarWidget('progressBar')
 
 layout = [
     [sg.TabGroup([[layout_tab_condition, urlListWidget.create(), fileListWidget.create(), zipListWidget.create(), layout_tab_setting]], enable_events=True, key='-TABGROUP-')],
-    [sg.Text('保存用CSVファイル名'), sg.Input('', enable_events=True, key='-CSVFILENAME-'), sg.FileSaveAs('参照', key='-CSVFILENAME-', file_types=file_types_write)],
-    [sg.Button('書き出し', key='-OK-'), sg.Button('終了', key='-EXIT-')],
-    [sg.ProgressBar(0, size=PROGRESS_BAR_SIZE, orientation='horizontal', key='-PROGRESSBAR-')]
+    output_filename_widget.create(),
+    ok_and_exit_widget.create(),
+    progress_bar_widget.create()
 ]
-
-
-
-def is_date(year, month, day):
-    return (year >= 0 and year <= 99 and month >= 1 and month <= 12 and day >= 1 and day <= 31)
-
-
-
-def is_time(hour, minute, second):
-    return (hour >= 0 and hour <= 23 and minute >= 0 and minute <= 59 and second >= 0 and second <= 59)
-
-
-
-def get_datetime(text):
-    dt = cc.re_datetime_search.search(text)
-    if dt:
-        return dt.group(0)
-    else:
-        return None
-
-
-
-def get_date(text):
-    dt = cc.re_date.search(text)
-    if dt:
-        if is_date(int(dt.group(1)), int(dt.group(2)), int(dt.group(3))):
-            return dt.group(0)
-        else:
-            return None
-    else:
-        return None
-
-
-
-def get_date_split(text):
-    dt = cc.re_date.search(text)
-    if dt:
-        if is_date(int(dt.group(1)), int(dt.group(2)), int(dt.group(3))):
-            return int(dt.group(1)), int(dt.group(2)), int(dt.group(3))
-        else:
-            return None
-    else:
-        return None
-
-
-
-def get_time(text):
-    dt = cc.re_time.search(text)
-    if dt:
-        if is_time(int(dt.group(1)), int(dt.group(2)), int(dt.group(3))):
-            return dt.group(0)
-        else:
-            return None
-    else:
-        return None
-
-
-
-def get_time_split(text):
-    dt = cc.re_time.search(text)
-    if dt:
-        if is_time(int(dt.group(1)), int(dt.group(2)), int(dt.group(3))):
-            return int(dt.group(1)), int(dt.group(2)), int(dt.group(3))
-        else:
-            return None
-    else:
-        return None
-
-
-
-def get_reformed_date(year, month, day):
-    return str(year).zfill(2)[-2:] + '/' + str(month).zfill(2) + '/' + str(day).zfill(2)
-
-
-
-def input_string(widget):
-    ret = sg.popup_get_text('文字列を入力してください:', default_text=values[widget])
-    if ret:
-        window[widget].update(ret)
-
-
-
-def input_number(widget):
-    while True:
-        ret = sg.popup_get_text('数字を入力してください:', default_text=values[widget])
-        if ret is None:
-            break
-        elif not ret:
-            window[widget].update('')
-            break
-        elif ret.isdecimal() == True:
-            window[widget].update(ret)
-            break
-
-
-
-def input_date(widget):
-    if values[widget]:
-        year, month, day = get_date_split(values[widget])
-        if month:
-            ret = sg.popup_get_date(month, day, year)
-        else:
-            ret = sg.popup_get_date()
-    else:
-        ret = sg.popup_get_date()
-    if ret:
-        window[widget].update(get_reformed_date(ret[2], ret[0], ret[1]))
-
-
-
-def input_time(widget):
-    while True:
-        ret = sg.popup_get_text('hh:mm:ssの形式で時刻を入力してください:', default_text=values[widget])
-        if ret is None:
-            break
-        elif get_time(ret):
-            window[widget].update(ret)
-            break
 
 
 
@@ -1314,75 +1142,7 @@ def pack_search_words():
     return ret
 
 
-
-
-
-def event_initial():
-    #load_config_search_input_string('url')
-    load_config_search_input_string('thread title')
-    load_config_search_input_string('munen')
-    load_config_search_input_string('name')
-    load_config_search_input_string('weekday')
-    load_config_search_input_string('ip')
-    load_config_search_input_string('domain')
-    load_config_search_input_string('res')
-
-    load_config_search_input_number('thread number')
-    load_config_search_input_number('number')
-    load_config_search_input_number('res id')
-    load_config_search_input_number('soudane')
-
-    load_config_search_input_date('date')
-    load_config_search_input_time('time')
-
-
-    window['-CSVFILENAME-'].update(config.get('output', 'csvfilename'))
-
-    window['-PROGRESSBAR-'].expand(True, False)
-
-    return
-
-
-
-def event_exit():
-    config.set('output', 'csvfilename', values['-CSVFILENAME-'])
-
-    #save_config_search_input_string('url')
-    save_config_search_input_string('thread title')
-    save_config_search_input_string('munen')
-    save_config_search_input_string('name')
-    save_config_search_input_string('weekday')
-    save_config_search_input_string('ip')
-    save_config_search_input_string('domain')
-    save_config_search_input_string('res')
-
-    save_config_search_input_number('thread number')
-    save_config_search_input_number('number')
-    save_config_search_input_number('res id')
-    save_config_search_input_number('soudane')
-
-    save_config_search_input_date('date')
-    save_config_search_input_time('time')
-
-    with open(CONFIG_INI_PATH, 'w', encoding='utf-8') as f:
-        config.write(f)
-
-    return
-
-
-
-def always_event():
-    return
-
-
-
-
-
-def event_csvfile_path():
-    window['-CSVFILENAME-'].update(values['-CSVFILEPATH-'])
-    return
-
-
+"""
 def event_ok():
     # ファイルリスト等取得
     filelist_string = remove_emptyline(messenger.values['fileList list'])# キーの取得はきちんと書き換え必要！
@@ -1390,7 +1150,8 @@ def event_ok():
     #print('======' + filelist_string + '\n----\n' + ziplist_string + '\n=========\n')
     filelist_raw = filelist_string.split('\n')
     ziplist_raw = ziplist_string.split('\n')
-    csv_filename = values['-CSVFILENAME-']
+    #csv_filename = values['-CSVFILENAME-']
+    csv_filename = ''
 
     # 作業開始確認    
     if sg.popup_yes_no('CSVファイルに書き出しますか？', modal=True) == 'No':
@@ -1403,11 +1164,10 @@ def event_ok():
         return
 
     # 存在しないファイルだとエラー？
-    """
-    if os.access(csv_filename, os.W_OK) == False:
-        sg.popup_error('指定されたCSVファイルへの書き込めません。')
-        return
-    """
+    
+    #if os.access(csv_filename, os.W_OK) == False:
+    #    sg.popup_error('指定されたCSVファイルへの書き込めません。')
+    #    return
 
     filelist = []
     ziplist = []
@@ -1502,32 +1262,35 @@ def event_ok():
         pass
 
     return
+"""
 
-
-handler = {
-    '-OK-': event_ok,
-    '-CSVFILEPATH-': event_csvfile_path
-}
-
-def get_name_from_key(key):
-    return key[key.rfind('_') + 1 : len(key) - 1].lower()
-
-#testWidget = TestWidget('testwidget')
-
-messenger = Messenger('Messenger', config)
 messenger.register_destination('fileList', fileListWidget.receive_message)
 messenger.register_destination('zipList', zipListWidget.receive_message)
 messenger.register_destination('urlList', urlListWidget.receive_message)
 messenger.register_destination('urlInput', url_input_widget.receive_message)
+messenger.register_destination('threadNumber', thread_number_input_widget.receive_message)
+messenger.register_destination('threadTitle', thread_title_input_widget.receive_message)
+messenger.register_destination('number', number_input_widget.receive_message)
+messenger.register_destination('munen', munen_input_widget.receive_message)
+messenger.register_destination('name', name_input_widget.receive_message)
+messenger.register_destination('date', date_input_widget.receive_message)
+messenger.register_destination('weekday', weekday_input_widget.receive_message)
+messenger.register_destination('time', time_input_widget.receive_message)
+messenger.register_destination('ip', ip_input_widget.receive_message)
+messenger.register_destination('domain', domain_input_widget.receive_message)
+messenger.register_destination('resId', res_id_input_widget.receive_message)
+messenger.register_destination('soudane', soudane_input_widget.receive_message)
+messenger.register_destination('res', res_input_widget.receive_message)
+messenger.register_destination('outputFilename', output_filename_widget.receive_message)
+messenger.register_destination('okAndExit', output_filename_widget.receive_message)
+messenger.register_destination('progressBar', progress_bar_widget.receive_message)
 
 window = sg.Window('Chiki Chiki Checker', layout, enable_close_attempted_event=True)
 window.finalize()
 
 messenger.send_window_finalized_message(window)
 
-progress_bar = ProgressBar(window, '-PROGRESSBAR-')
 
-event_initial()
 
 while True:
     message_raw = window.read()
@@ -1537,20 +1300,11 @@ while True:
     if key == sg.WIN_CLOSED or key == '-EXIT-' or key == sg.WINDOW_CLOSE_ATTEMPTED_EVENT:
         if sg.PopupYesNo('終了しますか？', modal=True) == 'Yes':
             messenger.send_window_close_message(window)
-            event_exit()
             
             break
     
-    always_event()
 
     messenger.dispatch_message()
-
-    if key in handler:
-        handler[key]()
-
-    if key in handlers:
-        handlers[key](get_name_from_key(key))
-
     
         
 
