@@ -15,7 +15,7 @@ STR_TO_BOOL = {
 # 将来的にはkeyを動的に変更してメッセージをやりとりできるかも？
 # →できない、keyを変更すると外部から操作できない(window[key].update()など)
 
-GUI_MESSAGE_SPLIT_CHARACTER = ' '
+GUI_MESSAGE_SPLIT_CHARACTER = '-'
 
 PROGRESS_BAR_SIZE = (50, 20)
 
@@ -32,18 +32,22 @@ def generate_key(name, part_name):
 
 
 class Widget():
-    def __init__(self, name):
+    def __init__(self, name, message_split_character=GUI_MESSAGE_SPLIT_CHARACTER):
         self.name = name
         self.handler = {}
-        pass
+        self.GUI_MESSAGE_SPLIT_CHARACTER = message_split_character
+
     def activate(self):
         pass
     def deactivate(self):
         pass
-    def load_config(self):
+
+    def load_config(self, config, window, values):
         pass
-    def save_config(self):
+
+    def save_config(self, config, window, values):
         pass
+
     def create(self):
         lyt = []
         return lyt
@@ -51,15 +55,21 @@ class Widget():
     def key(self, part_name, name=None):
         if name is None:
             name = self.name
-        #print(str(type(name)) + '/' + str(name) + '//' + str(type(part_name)) + '/' + str(part_name))
-        return name + GUI_MESSAGE_SPLIT_CHARACTER + part_name
+        return name + self.GUI_MESSAGE_SPLIT_CHARACTER + part_name
 
-    
+    def split_key(self, key):
+        key_split = key.split(self.GUI_MESSAGE_SPLIT_CHARACTER)
+        return key_split[0], key_split[1]
+
     #the message come from Messenger
     #part_nameでいろいろできるかも？
-    def receive_message(self, window, part_name, values):
-        self.handler[part_name](window, part_name, values)
-        #print('received message:'+ part_name + ' / ' + str(values) + ' / ' + str(window))
+    def receive_message(self, message):
+        #print(message)
+        name, part_name = self.split_key(message['key']) #自分宛て
+        if name == self.name: #通常のメッセージ
+            self.handler[part_name](message)
+        elif name == 'Messenger': #メッセンジャーからの特別なメッセージ
+            self.handler[part_name](message)
 
 
 
@@ -122,8 +132,8 @@ class FileListWidget(Widget):
             'addlistfile': self.add_list_to_list,
             'output': self.output_list,
             'list': self.touch_list,
-            'window_finalized': self.on_window_finalized,
-            'window_close': self.on_window_close
+            'windowFinalized': self.on_window_finalized,
+            'windowClose': self.on_window_close
         }
         self.file_types = file_types
         self.is_local_file = is_local_file
@@ -135,33 +145,36 @@ class FileListWidget(Widget):
             self.tab_text,
             [
                 [sg.Multiline(
-                    key=self.name + ' list',
+                    key=self.key('list'),
                     enable_events=True,
                     auto_refresh=True
                     )
                 ],
-                [sg.Column([[sg.Button('クリア', key=self.name + ' clear')]]),
-                sg.Column([[sg.Button('追加', key=self.name + ' add', enable_events=True)]]),
-                sg.Column([[sg.Button('追加(リストファイル)', key=self.name + ' addlistfile', enable_events=True)]]),
-                sg.Column([[sg.Button('リストをファイルに書き出す', key=self.name + ' output', enable_events=True)]])
+                [sg.Column([[sg.Button('クリア', key=self.key('clear'))]]),
+                sg.Column([[sg.Button('追加', key=self.key('add'), enable_events=True)]]),
+                sg.Column([[sg.Button('追加(リストファイル)', key=self.key('addlistfile'), enable_events=True)]]),
+                sg.Column([[sg.Button('リストをファイルに書き出す', key=self.key('output'), enable_events=True)]])
                 ]
             ]
         )
 
         return lyt
 
-    def touch_list(self, window, part_name, values):
+    def touch_list(self, message):
         pass
     
-    def clear_list(self, window, part_name, values):
+    def clear_list(self, message):
+        window = message['window']
         if sg.popup_yes_no('リストをクリアしますか？') == 'Yes':
-            window[generate_key(self.name, 'list')].update('')
+            window[self.key('list')].update('')
         pass
 
     #self.is_local_file == Trueならローカルファイル、さもなくばURL
     #暫定措置、ほかのモードが欲しければ拡張
-    def add_to_list(self, window, part_name, values):
+    def add_to_list(self, message):
         key = self.key('list')
+        window = message['window']
+        values = message['values']
 
         if self.is_local_file == True:
             ret = sg.popup_get_file('追加するファイルの選択:', multiple_files=True, modal=True, file_types=self.file_types)
@@ -188,8 +201,11 @@ class FileListWidget(Widget):
 
 
 
-    def add_list_to_list(self, window, part_name, values):
+    def add_list_to_list(self, message):
         key = self.key('list')
+        window = message['window']
+        values = message['values']
+
         ret = sg.popup_get_file('リストファイルの選択:', multiple_files=False, modal=True, file_types=self.file_types_list)
         if not ret:
             return
@@ -212,15 +228,20 @@ class FileListWidget(Widget):
     def initialize_list(self):
         pass
 
-    def expand_list_widget(self, window, part_name, values):
+    def expand_list_widget(self, message):
         key = self.key('list')
+        window = message['window']
+
         window[key].expand(True, True)
 
 
 
 
-    def output_list(self, window, part_name, values):
+    def output_list(self, message):
         key = self.key('list')
+        window = message['window']
+        values = message['values']
+
         ret = sg.popup_get_file('書き出すリストファイルの選択:', save_as=True, multiple_files=False, modal=True, file_types=self.file_types_list)
         if not ret:
             return
@@ -238,7 +259,10 @@ class FileListWidget(Widget):
     def get_listfile_to_initialize(self):
         pass
 
-    def on_window_finalized(self, window, part_name, values):
+    def on_window_finalized(self, message):
+        window = message['window']
+        values = message['values']
+
         default_list = ''
         if os.path.isfile(self.listfile_path) == False:
             try:
@@ -254,14 +278,119 @@ class FileListWidget(Widget):
                 sg.popup_error('保存用の設定ファイルを読み込めません。パーミッションエラーです。', e)
         
         window[self.key('list')].update(default_list)
-        self.expand_list_widget(window, part_name, values)
+        self.expand_list_widget(message)
     
-    def on_window_close(self, window, part_name, values):
+    def on_window_close(self, message):
+        window = message['window']
+        values = message['values']
+
         try:
             with open(self.listfile_path, 'w', encoding='utf-8') as f:
                 f.write(values[self.key('list')])
         except PermissionError as e:
             sg.popup_error('保存用の設定ファイルを書き込めません。パーミッションエラーです。', e)
+
+
+
+class InputStringWidget(Widget):
+    def __init__(self, name):
+        super().__init__(name)
+        self.handler = {
+            'isActive': self.on_is_active,
+            'input': self.on_input,
+            'reg': self.on_reg,
+            'windowFinalized': self.on_window_finalized,
+            'windowClose': self.on_window_close
+        }
+
+
+    def create(self):
+        lyt = [
+            sg.Checkbox(
+                '',
+                key=self.key('isActive'),
+                enable_events=True
+                ),
+            sg.InputText(
+                '',
+                key=self.key('input'),
+                size=CONDITION_INPUT_SINGLE,
+                enable_events=True,
+                tooltip=TOOLTIP_COND[0],
+                disabled=True
+                ),
+            sg.Checkbox(
+                '正規表現',
+                key=self.key('reg'),
+                disabled=True
+                )]
+
+        return lyt
+
+
+
+    def on_is_active(self, message):
+        key = self.key('isActive')
+        window = message['window']
+        values = message['values']
+
+        if values[key] == True:
+            self.activate_input(message)
+        else:
+            self.deactivate_input(message)
+
+
+
+    def activate_input(self, message):
+        window = message['window']
+        values = message['values']
+
+        window[self.key('input')].update(disabled=False)
+        window[self.key('reg')].update(disabled=False)
+
+
+
+    def deactivate_input(self, message):
+        window = message['window']
+        values = message['values']
+
+        window[self.key('input')].update(disabled=True)
+        window[self.key('reg')].update(disabled=True)
+
+
+
+    def on_input(self, message):
+        pass
+
+    def on_reg(self, message):
+        pass
+
+    def on_window_finalized(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
+
+        if config.has_section('Widget'):
+            ret = bool(config.get('Widget', self.key('isActive')))
+            window[self.key('isActive')].update(ret)
+            if ret:
+                self.activate_input(message)
+
+            window[self.key('input')].update(config.get('Widget', self.key('input')))
+            window[self.key('reg')].update(bool(config.get('Widget', self.key('reg'))))
+
+    def on_window_close(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
+
+        if not config.has_section('Widget'):
+            config.add_section('Widget')
+
+        config.set('Widget', self.key('isActive'), str(values[self.key('isActive')]))
+        config.set('Widget', self.key('input'), str(values[self.key('input')]))
+        config.set('Widget', self.key('reg'), str(values[self.key('reg')]))
+
 
 """
     def receive_message(self, part_name, values, window):
@@ -287,9 +416,13 @@ class TestWidget(Widget):
 class Messenger():
     address_book = {}
 
-    def __init__(self):
+    def __init__(self, name, config=None, message_split_character=GUI_MESSAGE_SPLIT_CHARACTER):
+        self.name = name
         self.__key = ''
         self.__values = {} #とりあえずget_message()でゲットしたやつは持っとく
+        self.__config = config
+        self.__window = None
+        self.GUI_MESSAGE_SPLIT_CHARACTER = message_split_character
         pass
 
     #メッセージ(self.key and self.key) は隠しとく(外から書き換え不可)
@@ -301,50 +434,64 @@ class Messenger():
     def values(self):
         return self.__values
 
+    @property
+    def config(self):
+        return self.__config
+
+    @property
+    def window(self):
+        return self.__window
+
     #message_raw: window.read()
     #メッセージを受けとるよ！
     def get_message(self, window, message_raw):
         key, values = message_raw
         self.__key = key
         self.__values = values
+        self.__window = window
 
-    def dispatch_message(self, window):
-        #持ってるメッセージを配りなさい
-        name, part_name = self.get_name(self.key) #part_name はname(メッセージ宛名のWidget名)の残余部分
-        self.send_message(name, window, part_name, self.values)
+    def dispatch_message(self, key=None, config=None, values=None, window=None):
+        #メッセージを配りなさい
+        message = self.pack_message(key=key, config=config, values=values, window=window)
+        for name in self.address_book.keys():
+            self.address_book[name](message)
+        
 
-    def get_name(self, key):
-        #暫定措置
-        #とりあえず空白で区切っとく
-        names = key.split(GUI_MESSAGE_SPLIT_CHARACTER)
-
-        # リファクタリングのための緊急措置
-        if len(names) >= 2:
-            return names[0], names[1]
+    def pack_message(self, key=None, config=None, values=None, window=None):
+        if not key:
+            key = self.key
+        if not config:
+            config = self.config
+        if not values:
+            values_copy = self.values.copy()
         else:
-            return names[0], ''
+            values_copy = self.values.copy()
+        if not window:
+            window = self.window
 
-
-    def send_message(self, name, window, part_name, values):
-        if name in self.address_book:
-            self.address_book[name](window, part_name, values)
-        pass
+        return {
+            'key': key,
+            'config': config,
+            'values': values_copy,
+            'window': window
+        }
+   
 
     def register_destination(self, name, receiver):
         self.address_book[name] = receiver
+
+    def generate_key(self, part_name, name=None):
+        if name is None:
+            name = self.name
+        return name + self.GUI_MESSAGE_SPLIT_CHARACTER + part_name
     
     #window.finalize() が出たときに全登録ガジェットに配られる特別なメッセージ
     def send_window_finalized_message(self, window):
-        for name in self.address_book:
-            #たぶんself.values は空だけど一応配っとく
-            self.address_book[name](window, 'window_finalized', self.values) 
-    
+        self.dispatch_message(key=self.generate_key('windowFinalized'), window=window)
+
     #window.close()が呼ばれそうなときに全登録ガジェットに配られる特別なメッセージ
     def send_window_close_message(self, window):
-        for name in self.address_book:
-            #とりあえず持ってるself.valuesを配っとく
-            self.address_book[name](window, 'window_close', self.values)
-
+        self.dispatch_message(key=self.generate_key('windowClose'), window=window)
 
 
 
@@ -378,9 +525,6 @@ if is_config_ini_initialized == True:
     config.add_section('condition')
 
     config.set('output', 'csvfilename', '')
-    config.set('condition', 'url', '')
-    config.set('condition', 'urlReg', 'False')
-    config.set('condition', 'urlIscond', 'False')
     config.set('condition', 'threadnumberFrom', '')
     config.set('condition', 'threadnumberTo', '')
     config.set('condition', 'threadnumberRange', 'のみ')
@@ -952,8 +1096,10 @@ layout_condition_text = sg.Column([
     [sg.Text('レス', pad=CONDITION_TEXT_PAD)]
     ], element_justification='right')
 
+url_input_widget = InputStringWidget('urlInput')
+
 layout_condition_input = sg.Column([
-    set_search_input_string('url'),
+    url_input_widget.create(),
     set_search_input_number('thread number'),
     set_search_input_string('thread title'),
     set_search_input_number('number'),
@@ -1116,8 +1262,11 @@ def input_time(widget):
 def pack_search_input_string(ret, attr, name):
     if values[widgets[name]['key']['iscond']]:
         ret[attr] = ('freeword', values[widgets[name]['key']['cond']], values[widgets[name]['key']['reg']])
-
-
+""" 
+    if values[widgets[name]['key']['iscond']]:
+        if values[widgets[name]['key']['reg'] == True:
+            ret[attr] = ('reg word', values[widgets[name]['key']['cond']], None])
+"""
 
 def pack_search_input_number(ret, attr, name):
     if values[widgets[name]['key']['iscond']]:
@@ -1145,7 +1294,7 @@ def pack_search_input_date(ret, attr, name):
 def pack_search_words():
     ret = {}
 
-    pack_search_input_string(ret, 'url', 'url')
+    #pack_search_input_string(ret, 'url', 'url')
     pack_search_input_string(ret, 'thread_title', 'thread title')
     pack_search_input_string(ret, 'munen', 'munen')
     pack_search_input_string(ret, 'name', 'name')
@@ -1169,7 +1318,7 @@ def pack_search_words():
 
 
 def event_initial():
-    load_config_search_input_string('url')
+    #load_config_search_input_string('url')
     load_config_search_input_string('thread title')
     load_config_search_input_string('munen')
     load_config_search_input_string('name')
@@ -1198,7 +1347,7 @@ def event_initial():
 def event_exit():
     config.set('output', 'csvfilename', values['-CSVFILENAME-'])
 
-    save_config_search_input_string('url')
+    #save_config_search_input_string('url')
     save_config_search_input_string('thread title')
     save_config_search_input_string('munen')
     save_config_search_input_string('name')
@@ -1365,10 +1514,11 @@ def get_name_from_key(key):
 
 #testWidget = TestWidget('testwidget')
 
-messenger = Messenger()
+messenger = Messenger('Messenger', config)
 messenger.register_destination('fileList', fileListWidget.receive_message)
 messenger.register_destination('zipList', zipListWidget.receive_message)
 messenger.register_destination('urlList', urlListWidget.receive_message)
+messenger.register_destination('urlInput', url_input_widget.receive_message)
 
 window = sg.Window('Chiki Chiki Checker', layout, enable_close_attempted_event=True)
 window.finalize()
@@ -1393,7 +1543,7 @@ while True:
     
     always_event()
 
-    messenger.dispatch_message(window)
+    messenger.dispatch_message()
 
     if key in handler:
         handler[key]()

@@ -772,18 +772,10 @@ class ArchiveTodayParser(ScrapParser):
             return None
 
 
-
-
-
-
-
-
-
-
 ###------------
 
 #Scraper用のスレッドデータを取り出します
-class FetchThread():
+class Fetcher():
     def __init__(self):
         self.fetch = {
             'URL': self.url,
@@ -832,14 +824,154 @@ class FetchThread():
             with log.open(log_index) as log_content:
                 ret = log_content.read()
         return ret
+    
+
+
+#--------------
+# 検索用
+
+class Searcher():
+    def __init__(self, box=None):
+        self.searchbox = {
+            'default': SimpleSearch()
+        }
+
+        self.search_type = {
+            'free word': self.filter_free_word,
+            'range': self.filter_range,
+            'reg word': self.filter_reg_word
+        }
+
+        if box:
+            self.box = box
+        else:
+            self.box = 'default'
 
 
 
+    def filter_range(self, text, filt):
+        return self.searchbox[self.box](text, filt[1], filt[2])
 
 
 
+    #filt_dict = {
+    # res_key: (search_type, filter_fore, filter_apre)}
+    #
+    #filt = (search_type, filter_fore, filter_apre)
+    #
+    def filter(self, resitem, filt_dict):
+        for key, value in filt_dict.items():
+            if self.search_type[value[0]](resitem[key], value) == False:
+                return False
+        return True
 
 
+
+    def filter_free_word(self, text, filt):
+        for word in filt[1].split():
+            if self.searchbox[self.box].is_contains_word(text, word) == False:
+                return False
+        return True
+
+    
+
+    def filter_reg_word(self, text, filt):
+        return self.searchbox[self.box].is_re_search(text, filt[1])
+
+
+
+class SearchBox():
+    def __init__(self):
+        pass
+
+    def is_in_range(self, res, fore=None, apre=None):
+        pass
+
+    def is_re_search(self, text, reg_text):
+        pass
+
+    def is_contains_word(self, text, word):
+        pass
+
+
+
+class SimpleSearch(SearchBox):
+    def __init__(self):
+        super().__init__()
+
+
+
+    def is_in_range(self, res, fore=None, apre=None):
+        if fore == apre:
+            if res == fore:
+                return True
+            else:
+                return False
+        elif fore and apre:
+            if res >= fore and res <= apre:
+                return True
+            else:
+                return False
+        elif not fore and apre:
+            if res <= apre:
+                return True
+            else:
+                return False
+        elif fore and not apre:
+            if res >= fore:
+                return True
+            else:
+                return False
+        else:
+            return True
+
+
+
+    def is_re_search(self, text, reg_text):
+        ret - re.search(reg_text, text)
+        if ret:
+            return True
+        else:
+            return False
+
+
+
+    def is_contains_word(self, text, word):
+        return word.lower() in text.lower()
+
+
+#-------------
+class Writer():
+    def __init__(self):
+        pass
+
+    def write_to_pickle(self, filename, to_write):
+        with open(filename, 'wb') as f:
+            pickle.dump(to_write, f)
+        return
+    
+
+
+    def write_to_csv(self, filename, to_write):
+        with open(filename, 'w', errors='xmlcharrefreplace') as f:
+            csv.writer(f, lineterminator='\n').writerows([x.values() for x in to_write])
+
+
+class Loader():
+    def __init__(self):
+        pass
+
+    def load_pickle(self, filename, to_load):
+        with open(filename, 'rb') as f:
+            ret = pickle.load(f)
+            if isinstance(ret, list):
+                for x in ret:
+                    to_load.append(x)
+            else:
+                pass #エラー処理
+    
+    def load_csv(self, filename, to_load):
+        pass
 
 
 def write_thread_dict(filename, to_write):
