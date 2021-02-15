@@ -836,6 +836,11 @@ class Searcher():
             'default': SimpleSearch()
         }
 
+        self.settings = {
+            'isIgnoreCharacter' : False,
+            'ignoreCharacter': '/ .'
+        }
+
         self.search_type = {
             'free word': self.filter_free_word,
             'range': self.filter_range,
@@ -928,7 +933,7 @@ class SimpleSearch(SearchBox):
 
 
     def is_re_search(self, text, reg_text):
-        ret - re.search(reg_text, text)
+        ret = re.search(reg_text, text)
         if ret:
             return True
         else:
@@ -938,6 +943,12 @@ class SimpleSearch(SearchBox):
 
     def is_contains_word(self, text, word):
         return word.lower() in text.lower()
+
+
+
+class QueryParser():
+    def __init__(self):
+        pass
 
 
 #-------------

@@ -52,6 +52,11 @@ class Widget():
         self.handler = {}
         self.messenger = messenger
         self.__key = Key(self.name)
+        self.handler = {
+            'windowFinalized': self.on_window_finalized,
+            'windowClose': self.on_window_close,
+            'initializeConfig': self.on_initialize_config
+        }
 
     def activate(self):
         pass
@@ -70,9 +75,9 @@ class Widget():
 
         config.set(section, option, value)
     
-    def check_config(self, config, lst):
+    def check_config(self, config, section, lst):
         for x in lst:
-            if self.load_config(config, 'Widget', self.key(x)) is None:
+            if self.load_config(config, section, self.key(x)) is None:
                 self.initialize_config(config)
                 return
 
@@ -99,6 +104,18 @@ class Widget():
         elif name == 'Messenger': #メッセンジャーからの特別なメッセージ
             self.handler[part_name](message)
 
+    def on_window_close(self, message):
+        pass
+
+    def on_window_finalized(self, message):
+        pass
+
+    def on_initialize_config(self, message):
+        pass
+
+    def dummy(self, message):
+        pass
+
 
 
 class FileListWidget(Widget):
@@ -111,16 +128,13 @@ class FileListWidget(Widget):
      ):
         super().__init__(name, messenger=messenger)
         self.tab_text = tab_text
-        self.handler = {
-            'clear': self.clear_list,
-            'add': self.add_to_list,
-            'addlistfile': self.add_list_to_list,
-            'output': self.output_list,
-            'list': self.touch_list,
-            'windowFinalized': self.on_window_finalized,
-            'windowClose': self.on_window_close,
-            'initializeConfig': self.on_initialize_config
-        }
+
+        self.handler['clear'] = self.clear_list
+        self.handler['add'] = self.add_to_list
+        self.handler['addlistfile'] = self.add_list_to_list
+        self.handler['output'] = self.output_list
+        self.handler['list'] = self.touch_list
+
         self.file_types = file_types
         self.is_local_file = is_local_file
         self.file_types_list = file_types_list
@@ -284,14 +298,9 @@ class FileListWidget(Widget):
 class InputStringWidget(Widget):
     def __init__(self, name, messenger = None):
         super().__init__(name, messenger=messenger)
-        self.handler = {
-            'isActive': self.on_is_active,
-            'input': self.on_input,
-            'reg': self.on_reg,
-            'windowFinalized': self.on_window_finalized,
-            'windowClose': self.on_window_close,
-            'initializeConfig': self.on_initialize_config
-        }
+        self.handler['isActive'] = self.on_is_active
+        self.handler['input'] = self.on_input
+        self.handler['reg'] = self.on_reg
 
 
     def create(self):
@@ -360,7 +369,7 @@ class InputStringWidget(Widget):
         window = message['window']
         values = message['values']
 
-        self.check_config(config, ['isActive', 'input', 'reg'])
+        self.check_config(config, 'Widget', ['isActive', 'input', 'reg'])
 
         ret = STR_TO_BOOL[self.load_config(config, 'Widget', self.key('isActive'))]
         window[self.key('isActive')].update(ret)
@@ -392,22 +401,19 @@ class InputStringWidget(Widget):
 class InputNumberWidget(Widget):
     def __init__(self, name, messenger=None, input_type='number'):
         super().__init__(name, messenger=messenger)
-        self.handler = {
-            'isActive': self.on_is_active,
-            'input_fore': self.on_input_fore,
-            'input_apre': self.on_input_apre,
-            'button_fore': self.on_button_fore,
-            'button_apre': self.on_button_apre,
-            'range': self.on_range,
-            'windowFinalized': self.on_window_finalized,
-            'windowClose': self.on_window_close,
-            'initializeConfig':self.on_initialize_config
-        }
+        self.handler['isActive'] = self.on_is_active
+        self.handler['input_fore'] = self.on_input_fore
+        self.handler['input_apre'] = self.on_input_apre
+        self.handler['button_fore'] = self.on_button_fore
+        self.handler['button_apre'] = self.on_button_apre
+        self.handler['range'] = self.on_range
+
         self.input_handler = {
             'number': self.input_number,
             'date': self.input_date,
             'time': self.input_time
         }
+
         self.input_type = input_type
         self.re_date = re.compile(r'(\d\d)/(\d\d)/(\d\d)')
         self.re_time = re.compile(r'(\d\d):(\d\d):(\d\d)')
@@ -607,7 +613,7 @@ class InputNumberWidget(Widget):
         window = message['window']
         values = message['values']
 
-        self.check_config(config, ['isActive', 'input_fore', 'input_apre', 'range'])
+        self.check_config(config, 'Widget', ['isActive', 'input_fore', 'input_apre', 'range'])
         ret = STR_TO_BOOL[self.load_config(config, 'Widget', self.key('isActive'))]
         window[self.key('isActive')].update(ret)
         if ret:
@@ -645,13 +651,8 @@ class OutputFilenameWidget(Widget):
      ):
         super().__init__(name, messenger=messenger)
         self.file_types = file_types
-        self.handler = {
-            'browse': self.on_browse,
-            'filename': self.on_filename,
-            'windowFinalized': self.on_window_finalized,
-            'windowClose': self.on_window_close,
-            'initializeConfig': self.on_initialize_config
-        }
+        self.handler['browse'] = self.on_browse
+        self.handler['filename'] = self.on_filename
 
     def on_filename(self, message):
         pass
@@ -664,7 +665,7 @@ class OutputFilenameWidget(Widget):
         window = message['window']
         values = message['values']
 
-        self.check_config(config, ['filename'])
+        self.check_config(config, 'Widget', ['filename'])
 
         window[self.key('filename')].update(self.load_config(config, 'Widget', self.key('filename')))
 
@@ -707,13 +708,8 @@ class OKAndExitWidget(Widget):
 
         self.packConditionDict = PackConditionDict()
 
-        self.handler = {
-            'ok': self.on_ok,
-            'exit': self.on_exit,
-            'windowFinalized': self.on_window_finalized,
-            'windowClose': self.on_window_close,
-            'initializeConfig': self.on_initialize_config
-        }
+        self.handler['ok'] = self.on_ok
+        self.handler['exit'] = self.on_exit
 
     def on_window_finalized(self, message):
         config = message['config']
@@ -864,11 +860,6 @@ class ProgressBarWidget(Widget):
         ):
 
         super().__init__(name, messenger=messenger)
-        self.handler = {
-            'windowFinalized': self.on_window_finalized,
-            'windowClose': self.on_window_close,
-            'initializeConfig': self.on_initialize_config
-        }
         self.max = max
         self.count = count
         self.step = step
@@ -935,9 +926,54 @@ class ProgressBarWidget(Widget):
 
 
 class SettingsWidget(Widget):
-    def __init__(self, name, messenger=None)
+    def __init__(self, name, messenger=None):
         super().__init__(name, messenger=messenger)
+        self.handler['isIgnoreCharacter'] = self.dummy
+        self.handler['ignoreCharacter'] = self.dummy
     
+    def create(self):
+        lyt = sg.Tab(
+            '設定',
+            [
+                [sg.Checkbox(
+                        '特定の文字を無視する',
+                        key=self.key('isIgnoreCharacter'),
+                        enable_events=True
+                    ),
+                    sg.InputText(
+                        '',
+                        key=self.key('ignoreCharacter'),
+                        #size=20,
+                        enable_events=True,
+                        tooltip='無視する文字を並べて記入'
+                    )
+                ]
+            ]
+        )
+
+        return lyt
+
+        def on_window_finalized(self, message):
+            config = message['config']
+            window = message['window']
+            values = message['values']
+
+            self.check_config(config, 'Settings', ['isIgnoreCharacter', 'ignoreCharacter'])
+
+            window[self.key('isIgnoreCharacter')].update(STR_TO_BOOL[self.load_config(config, 'Settings', self.key('isIgnoreCharacter'))])
+            window[self.key('ignoreCharacter')].update(self.load_config(config, 'Settings', self.key('ignoreCharacter')))
+        
+        def on_window_close(self, message):
+            config = message['config']
+            window = message['window']
+            values = message['values']
+
+            self.save_config(config, 'Settings', self.key('isIgnoreCharacter'), str(values[self.key('isIgnoreCharacter')]))
+            self.save_config(config, 'Settings', self.key('ignoreCharacter'), str(values[self.key('ignoreCharacter')]))
+
+        def initialize_config(self, config):
+            self.save_config(config, 'Settings', self.key('isIgnoreCharacter'), 'False')
+            self.save_config(config, 'Settings', self.key('ignoreCharacter'), '')
 
 
 
@@ -1140,9 +1176,6 @@ condition_range_handler = {
     CONDITION_RANGE_SELECT[3]: lambda fore, apre: (None, apre)
 }
 
-store_cond6a = '00/01/01 00:00:00'
-store_cond6z = '00/01/01 00:00:00'
-
 #sg.theme('Light Brown 12')
 
 
@@ -1221,14 +1254,14 @@ fileListWidget = FileListWidget('fileList', messenger=messenger, tab_text='フ�
 zipListWidget = FileListWidget('zipList', messenger=messenger, tab_text='ftbucketDLログZip', file_types=file_types_ziplog)
 urlListWidget = FileListWidget('urlList', messenger=messenger, tab_text='URL', is_local_file=False)
 
-layout_tab_setting = sg.Tab('設定', [])
+settings_widget = SettingsWidget('settings', messenger=messenger)
 
 output_filename_widget = OutputFilenameWidget('outputFilename', messenger=messenger)
 ok_and_exit_widget = OKAndExitWidget('okAndExit', messenger=messenger)
 progress_bar_widget = ProgressBarWidget('progressBar', messenger=messenger)
 
 layout = [
-    [sg.TabGroup([[layout_tab_condition, urlListWidget.create(), fileListWidget.create(), zipListWidget.create(), layout_tab_setting]], enable_events=True, key='-TABGROUP-')],
+    [sg.TabGroup([[layout_tab_condition, urlListWidget.create(), fileListWidget.create(), zipListWidget.create(), settings_widget.create()]], enable_events=True, key='-TABGROUP-')],
     output_filename_widget.create(),
     ok_and_exit_widget.create(),
     progress_bar_widget.create()
@@ -1255,6 +1288,7 @@ messenger.register_destination('res', res_input_widget.receive_message)
 messenger.register_destination('outputFilename', ok_and_exit_widget.receive_message)
 messenger.register_destination('okAndExit', output_filename_widget.receive_message)
 messenger.register_destination('progressBar', progress_bar_widget.receive_message)
+messenger.register_destination('settings', settings_widget.receive_message)
 
 window = sg.Window('Chiki Chiki Checker', layout, enable_close_attempted_event=True)
 
