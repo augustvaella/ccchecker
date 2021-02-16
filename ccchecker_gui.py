@@ -645,10 +645,12 @@ class InputNumberWidget(Widget):
 
 
 class OutputFilenameWidget(Widget):
-    def __init__(self, name,
-    messenger=None,
-     file_types=(('CSVファイル', '*.csv'), ('テキストファイル', '*.txt'), ('全てのファイル', '*.*'))
-     ):
+    def __init__(
+        self,
+        name,
+        messenger=None,
+        file_types=(('CSVファイル', '*.csv'), ('テキストファイル', '*.txt'), ('全てのファイル', '*.*'))
+        ):
         super().__init__(name, messenger=messenger)
         self.file_types = file_types
         self.handler['browse'] = self.on_browse
@@ -718,6 +720,7 @@ class OKAndExitWidget(Widget):
 
 
     def on_ok(self, message):
+        window = message['window']
         values = message['values']
 
         filelist_string = self.remove_emptyline(values[self.key('list', name='fileList')])
@@ -767,6 +770,9 @@ class OKAndExitWidget(Widget):
         self.packConditionDict.pack(message, flt)
         filtered = []
         progress_bar_widget.initialize(message, max=len(to_write))
+
+        self.searcher.settings['isIgnoreCharacter'] = values[self.key('isIgnoreCharacter', 'settings')]
+        self.searcher.settings['ignoreCharacter'] = values[self.key('ignoreCharacter', 'settings')]
 
         for x in to_write:
             if self.searcher.filter(x, flt) == True:
@@ -936,7 +942,7 @@ class SettingsWidget(Widget):
             '設定',
             [
                 [sg.Checkbox(
-                        '特定の文字を無視する',
+                        'レス内容の通常検索で特定の文字を無視する',
                         key=self.key('isIgnoreCharacter'),
                         enable_events=True
                     ),
@@ -953,27 +959,26 @@ class SettingsWidget(Widget):
 
         return lyt
 
-        def on_window_finalized(self, message):
-            config = message['config']
-            window = message['window']
-            values = message['values']
+    def on_window_finalized(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
 
-            self.check_config(config, 'Settings', ['isIgnoreCharacter', 'ignoreCharacter'])
+        self.check_config(config, 'Settings', ['isIgnoreCharacter', 'ignoreCharacter'])
+        window[self.key('isIgnoreCharacter')].update(STR_TO_BOOL[self.load_config(config, 'Settings', self.key('isIgnoreCharacter'))])
+        window[self.key('ignoreCharacter')].update(self.load_config(config, 'Settings', self.key('ignoreCharacter')))
+    
+    def on_window_close(self, message):
+        config = message['config']
+        window = message['window']
+        values = message['values']
 
-            window[self.key('isIgnoreCharacter')].update(STR_TO_BOOL[self.load_config(config, 'Settings', self.key('isIgnoreCharacter'))])
-            window[self.key('ignoreCharacter')].update(self.load_config(config, 'Settings', self.key('ignoreCharacter')))
-        
-        def on_window_close(self, message):
-            config = message['config']
-            window = message['window']
-            values = message['values']
+        self.save_config(config, 'Settings', self.key('isIgnoreCharacter'), str(values[self.key('isIgnoreCharacter')]))
+        self.save_config(config, 'Settings', self.key('ignoreCharacter'), str(values[self.key('ignoreCharacter')]))
 
-            self.save_config(config, 'Settings', self.key('isIgnoreCharacter'), str(values[self.key('isIgnoreCharacter')]))
-            self.save_config(config, 'Settings', self.key('ignoreCharacter'), str(values[self.key('ignoreCharacter')]))
-
-        def initialize_config(self, config):
-            self.save_config(config, 'Settings', self.key('isIgnoreCharacter'), 'False')
-            self.save_config(config, 'Settings', self.key('ignoreCharacter'), '')
+    def initialize_config(self, config):
+        self.save_config(config, 'Settings', self.key('isIgnoreCharacter'), 'False')
+        self.save_config(config, 'Settings', self.key('ignoreCharacter'), '')
 
 
 

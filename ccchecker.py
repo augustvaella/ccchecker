@@ -838,7 +838,7 @@ class Searcher():
 
         self.settings = {
             'isIgnoreCharacter' : False,
-            'ignoreCharacter': '/ .'
+            'ignoreCharacter': ''
         }
 
         self.search_type = {
@@ -871,8 +871,12 @@ class Searcher():
         return True
 
 
-
+    #filt[1]: query
     def filter_free_word(self, text, filt):
+        if self.settings['isIgnoreCharacter']:
+            for ignoreCharacter in self.settings['ignoreCharacter']:
+                text = text.replace(ignoreCharacter, '')
+        
         for word in filt[1].split():
             if self.searchbox[self.box].is_contains_word(text, word) == False:
                 return False
@@ -947,8 +951,92 @@ class SimpleSearch(SearchBox):
 
 
 class QueryParser():
+    DEFAULT_KEYWORD_AND = ' '
+    DEFAULT_KEYWORD_OR = 'OR'
+    DEFAULT_KEYWORD_NOT = '-'
+    DEFAULT_KEYWORD_PARENTHESES = '()'
+    DEFAULT_KEYWORD_PHRASE = '""'
+
     def __init__(self):
+        keyword_and = QueryParser.DEFAULT_KEYWORD_AND
+        keyword_or = QueryParser.DEFAULT_KEYWORD_OR
+        keyword_not = QueryParser.DEFAULT_KEYWORD_NOT
+        keyword_parentheses = QueryParser.DEFAULT_KEYWORD_PARENTHESES
+        keyword_phrase = QueryParser.DEFAULT_KEYWORD_PHRASE
+        
+        self.keyword = {
+            keyword_and: self.on_keyword_and,
+            keyword_or: self.on_keyword_or,
+            keyword_not: self.on_keyword_not,
+            keyword_parentheses: self.on_keyword_parentheses,
+            keyword_phrase: self.on_keyword_phrase
+        }
+
+        self.is_parentheses_stack = []
+        self.is_phrase_stack = []
+    
+    def parse(self, query, ret):
+        sav = []
+
+        index = 0
+        max_index = len(query)
+        group = ''
+
+        #query: string to queue
+        while(index < max_index):
+        #get one from strings
+            character = query[index]
+
+        #is keyword?
+            for key in self.keyword.keys():
+                if character == key[0]:
+                    chk, grp = self.keyword(query, index)
+                    # is keyword
+                    if chk == True:
+                        sav.append(group)
+                        sav.append(grp)
+                        group = ''
+                        index += 1
+                        continue
+                    #is not keyword
+                    else:
+                        pass
+        #
+            group += character
+            index += 1
+        
+        if not group:
+            sav.append(group)
+        
+        
+        #query: infix to RP
+        met = []
+
+        #left operand
+        #operator
+        #right operand
+        #stack and return
+        
+        ret = met.copy()
         pass
+    
+    def on_keyword_and(self, query, index):
+        #return is_keyword, group_to_stack
+        pass
+
+    def on_keyword_or(self, query, index):
+        pass
+
+    def on_keyword_not(self, query, index):
+        pass
+
+    def on_keyword_parentheses(self, query, index):
+        pass
+
+    def on_keyword_phrase(self, query, index):
+        pass
+
+
 
 
 #-------------
