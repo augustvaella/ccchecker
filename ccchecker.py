@@ -7,6 +7,7 @@ import csv
 import pickle
 import datetime 
 import requests
+import mimetypes
 
 # Chiki Chiki Checker
 
@@ -781,7 +782,8 @@ class Fetcher():
             'URL': self.url,
             'megalodon': self.megalodon,
             'localfile': self.localfile,
-            'FTBucket Zip': self.ftbucket_zip
+            'FTBucket Zip': self.ftbucket_zip,
+            'Zip with One HTML': self.zip_with_one_html
         }
 
     def fetch_thread(self, address, is_url=False, is_ftbucket_zip=False):
@@ -823,6 +825,15 @@ class Fetcher():
             log_index = [s for s in log_list if(r'index.htm' in s and r'gz' not in s)][0]
             with log.open(log_index) as log_content:
                 ret = log_content.read()
+        return ret
+    
+    def zip_with_one_html(self, filename):
+        with zipfile.ZipFile(filename) as files:
+            for name in files.namelist():
+                mim = mimetypes.guess_type(name)
+                if mim == ('text/html', None):
+                    with files.open(name) as log:
+                       ret = log.read()
         return ret
     
 
@@ -951,91 +962,230 @@ class SimpleSearch(SearchBox):
 
 
 class QueryParser():
-    DEFAULT_KEYWORD_AND = ' '
+    DEFAULT_PARTITION = ' '
+    DEFAULT_QUOTATION = '"'
+    DEFAULT_NOT_PREFIX = '-'
+    DEFAULT_PARENTHESES_BEGIN = '('
+    DEFAULT_PARENTHESES_END = ')'
+
+    DEFAULT_KEYWORD_AND = 'AND'
     DEFAULT_KEYWORD_OR = 'OR'
-    DEFAULT_KEYWORD_NOT = '-'
-    DEFAULT_KEYWORD_PARENTHESES = '()'
-    DEFAULT_KEYWORD_PHRASE = '""'
+
+    DEFAULT_OPERATOR_AND = ('operator', 'and')
+    DEFAULT_OPERATOR_OR = ('operator', 'or')
+    DEFAULT_OPERATOR_NOT = ('operator', 'not')
+    DEFAULT_OPERATOR_PARENTHESES_BEGIN = ('operator', 'parentheses_begin')
+    DEFAULT_OPERATOR_PARENTHESES_END = ('operator', 'parentheses_end')
 
     def __init__(self):
-        keyword_and = QueryParser.DEFAULT_KEYWORD_AND
-        keyword_or = QueryParser.DEFAULT_KEYWORD_OR
-        keyword_not = QueryParser.DEFAULT_KEYWORD_NOT
-        keyword_parentheses = QueryParser.DEFAULT_KEYWORD_PARENTHESES
-        keyword_phrase = QueryParser.DEFAULT_KEYWORD_PHRASE
+        self.partition = QueryParser.DEFAULT_PARTITION
+        self.quotation = QueryParser.DEFAULT_QUOTATION
+        self.not_prefix = QueryParser.DEFAULT_NOT_PREFIX
+        self.parentheses_begin = QueryParser.DEFAULT_PARENTHESES_BEGIN
+        self.parentheses_end = QueryParser.DEFAULT_PARENTHESES_END
         
-        self.keyword = {
-            keyword_and: self.on_keyword_and,
-            keyword_or: self.on_keyword_or,
-            keyword_not: self.on_keyword_not,
-            keyword_parentheses: self.on_keyword_parentheses,
-            keyword_phrase: self.on_keyword_phrase
+
+        self.separate = {
+            self.partition: self.separate_partition,
+            self.quotation: self.separate_quotation,
+            self.not_prefix: self.separate_not_prefix,
+            self.parentheses_begin: self.separate_parentheses_begin,
+            self.parentheses_end: self.separate_parentheses_end
         }
 
-        self.is_parentheses_stack = []
-        self.is_phrase_stack = []
+        self.keyword_and = QueryParser.DEFAULT_KEYWORD_AND
+        self.keyword_or = QueryParser.DEFAULT_KEYWORD_OR
+        
+        self.keyword = {
+            self.keyword_and: self.on_keyword_and,
+            self.keyword_or: self.on_keyword_or,
+            self.not_prefix: self.on_keyword_not,
+            self.parentheses_begin: self.on_keyword_parentheses_begin,
+            self.parentheses_end: self.on_keyword_parentheses_end
+        }
+
+        self.operator_and = QueryParser.DEFAULT_OPERATOR_AND
+        self.operator_or = QueryParser.DEFAULT_OPERATOR_OR
+        self.operator_not = QueryParser.DEFAULT_OPERATOR_NOT
+        self.operator_parentheses_begin = QueryParser.DEFAULT_OPERATOR_PARENTHESES_BEGIN
+        self.operator_parentheses_end = QueryParser.DEFAULT_OPERATOR_PARENTHESES_END
+
+        self.operator = {
+            self.operator_and: self.on_operator_and,
+            self.operator_or: self.on_operator_or,
+            self.operator_not: self.on_operator_not,
+            self.operator_parentheses_begin: self.on_operator_parentheses_begin,
+            self.operator_parentheses_end: self.on_operator_parentheses_end
+        }
+
     
-    def parse(self, query, ret):
-        sav = []
+    def parse(self, query_string, query_stack):
+        #separate query string to words
+        group_list = []
+        self.separate_query_string(query_string, group_list)
 
-        index = 0
-        max_index = len(query)
-        group = ''
+        #replace keywords to operators(tuple)
+        self.convert_keyword(group_list, query_stack)
+        
 
+
+
+    def separate_query_string(self, query_string, group_list):
         #query: string to queue
-        while(index < max_index):
-        #get one from strings
-            character = query[index]
+        #partition and quotation
+        index = 0
+        max_index = len(query_string)
+        group_string = ''
+        option = {'is_quotation': False}
 
-        #is keyword?
-            for key in self.keyword.keys():
-                if character == key[0]:
-                    chk, grp = self.keyword(query, index)
-                    # is keyword
-                    if chk == True:
-                        sav.append(group)
-                        sav.append(grp)
-                        group = ''
-                        index += 1
-                        continue
-                    #is not keyword
-                    else:
-                        pass
-        #
-            group += character
-            index += 1
-        
-        if not group:
-            sav.append(group)
-        
-        
-        #query: infix to RP
-        met = []
+        while (index < max_index):
+            character = query_string[index]
 
-        #left operand
-        #operator
-        #right operand
-        #stack and return
+            try:
+                separation = self.separate[character]
+            
+            except KeyError: # normal character
+                group_string += character
+
+            else: # is separation character
+                group_string = separation(group_string, group_list, option)
+            
+            finally:
+                index += 1
         
-        ret = met.copy()
-        pass
+        if group_string != '':
+            group_list.append(group_string)
+                
+
+
+
+    def separate_partition(self, group_string, group_list, option):
+        if option['is_quotation'] == True:
+            return group_string + ' '
+        
+        if group_string != '':
+            group_list.append(group_string)
+            return ''
+        
+        return group_string
+
+    def separate_quotation(self, group_string, group_list, option):
+        #option['is_quotation] == True/False
+        if option['is_quotation'] == True:
+            group_list.append(group_string)
+            group_string = ''
+            option['is_quotation'] = False
+
+        else:
+            if group_string != '':
+                group_list.append(group_string)
+
+            group_string = self.quotation
+            option['is_quotation'] = True
+
+        return group_string
+
+    def separate_not_prefix(self, group_string, group_list, option):
+        if option['is_quotation'] == True:
+            return group_string
+
+        if group_string != '':
+            group_list.append(group_string)
+
+        group_list.append(self.not_prefix)
+
+        return ''
+
+    def separate_parentheses_begin(self, group_string, group_list, option):
+        if option['is_quotation'] == True:
+            return group_string
+
+        if group_string != '':
+            group_list.append(group_string)
+
+        group_list.append(self.parentheses_begin)
+
+        return ''
+
+    def separate_parentheses_end(self, group_string, group_list, option):
+        if option['is_quotation'] == True:
+            return group_string
+
+        if group_string != '':
+            group_list.append(group_string)
+
+        group_list.append(self.parentheses_end)
+
+        return ''
+
+
+    def convert_keyword(self, group_list, query_list):
+        option = {'count_parentheses': 0}
+
+        while(len(group_list) > 0):
+        #get one from group_list
+            group_string = group_list.pop(0)
+
+            try:
+                keyword_method = self.keyword[group_string]
+
+            #not keyword
+            except KeyError:
+                #self.quotationをつけることでキーワードと検索ワードを区別
+                #たとえば OR と "OR
+                if group_string[0] == self.quotation:
+                    #self.quotationを消す
+                    group_string = group_string.replace(self.quotation, '', 1)
+                
+                query_list.append(group_string)
+
+            #keyword
+            else:
+                keyword_method(group_string, query_list, option)
+
+            #common
+            finally:
+                pass
+
+
     
-    def on_keyword_and(self, query, index):
-        #return is_keyword, group_to_stack
+    def on_keyword_and(self, group_string, query_list, option):
+        query_list.append(self.operator_and)
+
+    def on_keyword_or(self, group_string, query_list, option):
+        query_list.append(self.operator_or)
+
+    def on_keyword_not(self, group_string, query_list, option):
+        query_list.append(self.operator_not)
+
+    def on_keyword_parentheses_begin(self, group_string, query_list, option):
+        query_list.append(self.operator_parentheses_begin)
+        option['count_parentheses'] += 1
+
+    def on_keyword_parentheses_end(self, group_string, query_list, option):
+        query_list.append(self.operator_parentheses_end)
+        option['count_parentheses'] -= 1
+
+
+    def eval_query_stack(self, query_stack, search_handler, search_parameter_list):
+        #search_handler(*search_parameter_list)
         pass
 
-    def on_keyword_or(self, query, index):
+
+    def on_operator_and(self):
         pass
 
-    def on_keyword_not(self, query, index):
+    def on_operator_or(self):
         pass
 
-    def on_keyword_parentheses(self, query, index):
+    def on_operator_not(self):
         pass
 
-    def on_keyword_phrase(self, query, index):
+    def on_operator_parentheses_begin(self):
         pass
 
+    def on_operator_parentheses_end(self):
+        pass
 
 
 

@@ -759,7 +759,7 @@ class OKAndExitWidget(Widget):
             progress_bar_widget.do_step(message)
         
         for filename in ziplist:
-            self.get_content_from_file(self.fetcher.ftbucket_zip, filename, to_write)
+            self.get_content_from_file(self.fetcher.zip_with_one_html, filename, to_write)
             progress_bar_widget.do_step(message)
 
         if len(to_write) < 1:
@@ -827,7 +827,7 @@ class OKAndExitWidget(Widget):
         except UnicodeDecodeError as e:
             sg.popup_error('ファイルを開けません:' + filename, e)
         else:
-            cc.set_list_to_write(thread, r'', to_write)
+            self.scraper.scrap_thread(thread, r'', to_write)
         finally:
             pass
 
